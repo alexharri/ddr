@@ -1,0 +1,80 @@
+@import "./reset.css";
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  overflow-y: scroll;
+}
+
+.arrow-container {
+  height: 90px;
+  width: 240px;
+  position: fixed;
+  top: 40px;
+  right: 40px;
+}
+
+.arrow {
+  box-sizing: content-box;
+  width: 30%;
+  height: 30px;
+  position: absolute;
+  bottom: 0;
+  background: rgb(255, 0, 0);
+  border-bottom: 8px solid rgb(210, 0, 0);
+}
+
+.arrow.active {
+  border-bottom-width: 2px;
+}
+
+.arrow-left {
+  left: 0;
+}
+
+.arrow-right {
+  right: 0;
+}
+
+.arrow-down {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.arrow-up {
+  top: 0;
+  bottom: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.arrow-up.active {
+  top: 6px;
+}
+
+.note-list-container {
+  max-width: 800px;
+  min-width: 800px;
+  position: fixed;
+  top: 40px;
+  left: 40px;
+  bottom: 40px;
+}
+
+.note-container {
+  background: blue;
+  height: 20px;
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
+.note {
+  background: red;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 25%;
+}

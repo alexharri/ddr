@@ -14,14 +14,18 @@ let renderer;
 let camera;
 let controls;
 
-const startPoint = -1.4;
-const endPoint = 0.5;
+const scale = 1000;
+
+const startPoint = -1400;
+const endPoint =    500;
 const range = Math.abs(startPoint) + endPoint;
 
 /**
  * The 3D .obj models that we will use.
  */
 const models = {};
+
+window.models = models;
 
 // The directios that the notes will use
 const directions = ["LEFT", "UP", "DOWN", "RIGHT"];
@@ -65,7 +69,7 @@ const hittableNotes = [];
 const activeNotes = [];
 
 function genNoteMesh(index) { // Index being a note index from 0-3.
-  const boxDim = 0.05;
+  const boxDim = 50;
   const box = new THREE.BoxGeometry(boxDim, boxDim, boxDim);
   const material = new THREE.MeshStandardMaterial({
     color: 0x6F6CC5,
@@ -75,11 +79,12 @@ function genNoteMesh(index) { // Index being a note index from 0-3.
     metalness: 0.7,
   });
 
-  const boardRange = 0.3;
+  const boardRange = 300;
   
   const mesh = new THREE.Mesh(box, material);
-  mesh.position.y += 0.08;
+  mesh.position.y += 80;
   mesh.position.x = (-(boardRange / 2)) + (index * (boardRange / 3));
+  mesh.castShadow = true;
 
   return mesh;
 }
@@ -88,7 +93,7 @@ function genNoteMesh(index) { // Index being a note index from 0-3.
  * Generates a note and appends it the to the noteContainer.
  */
 function startNote(noteArr) {
-  const group = new THREE.Group(); // The note mesh container
+  const group = new THREE.Object3D(); // The note mesh container
 
   for (let i = 0; i < noteArr.length; i += 1) {
     if (noteArr[i]) {
@@ -173,7 +178,7 @@ function startNote(noteArr) {
         this.setUnhittable();
         this.isHit = true;
         addScore(50);
-        this.group.position.y += .1;
+        this.group.position.y += 100;
       }
     },
   };
@@ -206,8 +211,12 @@ function getScore() {
 }
 
 function createPerspectiveCamera() {
-  camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 10);
-  window.camera = camera;
+  camera = new THREE.PerspectiveCamera(
+    50,
+    window.innerWidth / window.innerHeight,
+    50,
+    10000,
+  );
 
   /*
   controls = new OrbitControls(camera, renderer.domElement)
@@ -220,9 +229,9 @@ function createPerspectiveCamera() {
   });
   */
 
-  camera.position.x = 0.15;
-  camera.position.y = 0.92;
-  camera.position.z = 0.61;
+  camera.position.x = 0.15 * scale;
+  camera.position.y = 0.92 * scale;
+  camera.position.z = 0.61 * scale;
   
   camera.rotation.order = "YXZ";
   camera.rotation.x = -0.84;
@@ -231,6 +240,7 @@ function createPerspectiveCamera() {
 
 }
 
+/*
 function createIsometricCamera() {
   const scale = .001;
 
@@ -248,12 +258,16 @@ function createIsometricCamera() {
 
   camera.updateProjectionMatrix();
 }
+*/
 
 function main() {
   playing = true;
 
 
-  const boardGeometry = new THREE.BoxGeometry(0.4, 0.05, 2);
+  const boardGeometry = new THREE.BoxGeometry(
+    400,
+    30,
+    2000);
   const boardMaterial = new THREE.MeshPhongMaterial({
     color: 0xff0000,
     specular: 0x666666,
@@ -261,10 +275,14 @@ function main() {
   });
 
   const boardMesh = new THREE.Mesh(boardGeometry, boardMaterial);
-  boardMesh.position.z = -0.75;
+  boardMesh.position.z = -0.75 * scale;
+  boardMesh.receiveShadow = true;
 
 
-  const targetGeometry = new THREE.BoxGeometry(0.5, 0.05, 0.01);
+  const targetGeometry = new THREE.BoxGeometry(
+    0.5 * scale,
+    0.05 * scale,
+    0.01 * scale);
   const targetMaterial = new THREE.MeshPhongMaterial({
     color: 0x0000ff,
     specular: 0x555555,
@@ -272,7 +290,7 @@ function main() {
   });
 
   const targetMesh = new THREE.Mesh(targetGeometry, targetMaterial);
-  targetMesh.position.y = .1;
+  targetMesh.position.y = .1 * scale;
   targetMesh.position.z = startPoint + (range * 0.8);
 
   
@@ -280,14 +298,25 @@ function main() {
   scene.add(boardMesh);
   scene.add(targetMesh);
 
-  const blueLight = new THREE.PointLight(0x0033ff, 1.5, 150);
-  blueLight.position.set(0.5, 3.5, 0);
+  const blueLight = new THREE.PointLight(0x0033ff, 1.5, 10 * scale);
+  blueLight.position.set(0.5 * scale, 3.5 * scale, 0);
+  blueLight.castShadow = true;
+  blueLight.shadow.camera.near = 0.01 * scale;
+  blueLight.shadow.camera.far = 5 * scale;
+  blueLight.shadow.mapSize.width = 1800;
+  blueLight.shadow.mapSize.height = 1800;
   scene.add(blueLight);
   scene.add(new THREE.PointLightHelper(blueLight, 3));
 
-  const redLight = new THREE.PointLight(0x00ff00, 1.5, 150);
-  redLight.position.set(-0.5, 3.5, 0);
+  const redLight = new THREE.PointLight(0x00ff00, 1.5, 10 * scale);
+  redLight.position.set(-0.5 * scale, 3.5 * scale, 0);
+  redLight.castShadow = true;
+  redLight.shadow.camera.near = 0.01 * scale;
+  redLight.shadow.camera.far = 5 * scale;
+  redLight.shadow.mapSize.width = 1800;
+  redLight.shadow.mapSize.height = 1800;
   scene.add(redLight);
+  scene.add(new THREE.CameraHelper(redLight.shadow.camera));
   scene.add(new THREE.PointLightHelper(redLight, 3));
 
   const ambLight = new THREE.AmbientLight(0x404040);
@@ -296,6 +325,13 @@ function main() {
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio( window.devicePixelRatio );
   renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  // renderer.shadowMap.type = THREE.PCFShadowMap;
+  // renderer.shadowMap.soft = true
+  // renderer.shadowMap.width = 2048;
+  // renderer.shadowMap.height = 2048;
+  console.log({ renderer });
+
   document.body.appendChild(renderer.domElement);
 
   createPerspectiveCamera();
@@ -403,8 +439,15 @@ const assets = [
 
 (function loadNext(i = 0) {
   if (assets[i]) {
-    loader.load(assets[i].path, (obj) => {
-      models[assets[i].name] = obj;
+    loader.load(assets[i].path, (mesh) => {
+      mesh.traverse((node) => {
+        if (node instanceof THREE.Mesh) {
+          node.castShadow = true;
+          node.receiveShadow = true;
+        }
+      });
+
+      models[assets[i].name] = mesh;
       loadNext(i + 1);
     });
   } else {

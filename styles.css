@@ -5,7 +5,20 @@
 }
 
 body {
-  overflow-y: scroll;
+  overflow: hidden;
+}
+
+button {
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+
+.score-container {
+  position: fixed;
+  color: white;
+  left: 100px;
+  top: 0;
 }
 
 .arrow-container {
@@ -23,7 +36,7 @@ body {
   position: absolute;
   bottom: 0;
   background: rgb(255, 0, 0);
-  border-bottom: 8px solid rgb(210, 0, 0);
+  border-bottom: 8px solid rgb(150, 0, 0);
 }
 
 .arrow.active {
@@ -52,61 +65,4 @@ body {
 
 .arrow-up.active {
   top: 6px;
-}
-
-.note-list-container {
-  max-width: 400px;
-  min-width: 400px;
-  position: fixed;
-  top: -80px;
-  left: 80px;
-  bottom: -80px;
-}
-
-.note-container {
-  border: rgba(0,0,0,.1);
-  height: 80px;
-  position: absolute;
-  left: 0;
-  right: 0;
-}
-
-.note {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 80px;
-  background-image: url("./images/left-arrow.svg");
-  background-position: 50%;
-  background-size: contain;
-  background-repeat: no-repeat;
-}
-
-.note-down  { transform: rotate(-90deg); }
-.note-up    { transform: rotate( 90deg); }
-.note-right { transform: rotate(180deg); }
-
-#note-target {
-  position: absolute;
-  left: -20px;
-  right: -20px;
-  top: 20%;
-  transform: translateY(-50%);
-  height: 100px;
-  border: 1px solid rgba(0,0,0,.1);
-  z-index: -1;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 20px;
-}
-
-.note-target-arrow {
-  opacity: .1;
-  width: 80px;
-  height: 80px;
-  background-image: url("./images/left-arrow.svg");
-  background-position: 50%;
-  background-size: contain;
-  background-repeat: no-repeat;
 }

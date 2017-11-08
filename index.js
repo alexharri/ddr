@@ -69,8 +69,8 @@ const hittableNotes = [];
 const activeNotes = [];
 
 function genNoteMesh(index) { // Index being a note index from 0-3.
-  const boxDim = 50;
-  const box = new THREE.BoxGeometry(boxDim, boxDim, boxDim);
+  // const boxDim = 50;
+  // const box = new THREE.BoxGeometry(boxDim, boxDim, boxDim);
   const material = new THREE.MeshStandardMaterial({
     color: 0x6F6CC5,
     // specular: 0x111111,
@@ -80,8 +80,20 @@ function genNoteMesh(index) { // Index being a note index from 0-3.
   });
 
   const boardRange = 300;
-  
-  const mesh = new THREE.Mesh(box, material);
+
+  const mesh = models.arrow.clone();
+  mesh.material = material;
+
+  mesh.scale.x = 50;
+  mesh.scale.y = 50;
+  mesh.scale.z = 200;
+
+  // left, up, down, right
+  const rotationMultipliers = [2, 3, 1, 0];
+
+  mesh.rotation.x = (90 * Math.PI) / 180;
+  mesh.rotation.z = ((90 * rotationMultipliers[index]) * Math.PI) / 180;
+
   mesh.position.y += 80;
   mesh.position.x = (-(boardRange / 2)) + (index * (boardRange / 3));
   mesh.castShadow = true;

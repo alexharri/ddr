@@ -1,36 +1,40 @@
 /* eslint-disable no-underscore-dangle */
-// global THREE
-
 
 import genEl from "./src/utils/genEl";
 import "./styles.css";
 
 const THREE = require("three"); // Import doesn't work.
-const OrbitControls = require("three-orbit-controls")(THREE);
-const OBJLoader = require("three-obj-loader")(THREE);
+require("three-orbit-controls")(THREE);
+require("three-obj-loader")(THREE);
+
 const loader = new THREE.OBJLoader();
+
+
 let scene;
 let renderer;
 let camera;
 let controls;
 
-const scale = 1000;
-
+/**
+ * startPoint is the point on the board on which the arrows start
+ * endPoint is the point at which they disappear.
+ * range is the distance between the end and start.
+ */
 const startPoint = -1400;
-const endPoint =    500;
+const endPoint = 500;
 const range = Math.abs(startPoint) + endPoint;
 
-/**
- * The 3D .obj models that we will use.
- */
-const models = {};
 
-window.models = models;
+// The meshes created from .obj 3D models that we will use.
+const models = {};
 
 // The directios that the notes will use
 const directions = ["LEFT", "UP", "DOWN", "RIGHT"];
 
-// A map with an element for each direction in the array above.
+/**
+ * This contains the elements that represent the arrow keys
+ * in the UI.
+ */
 const arrowElMap = {};
 
 {
@@ -51,6 +55,48 @@ const arrowElMap = {};
   }
 }
 
+const scoreContainer = document.getElementById("score-container");
+
+let score = 0;
+const scoreMultiplier = 0;
+
+function addScore(s) {
+  if (typeof s !== "number") {
+    throw new Error("Expected score to be a number.");
+  }
+  score += (s * scoreMultiplier);
+  return score;
+}
+
+/*
+function getScore() {
+  return score;
+}
+*/
+
+
+function genNoteMesh(index) { // Index being a note index from 0-3.
+  const mesh = models.arrow.clone();
+
+  // left, up, down, right
+  const rotationMultipliers = [2, 3, 1, 0];
+
+  mesh.rotation.x = (90 * Math.PI) / 180;
+  mesh.rotation.z = ((90 * rotationMultipliers[index]) * Math.PI) / 180;
+
+  /**
+   * Spread is the distance between the X coord of the leftmost
+   * arrow and the X coords of the rightmost arrow.
+   */
+  const spread = 300;
+
+  mesh.position.y = 80;
+  mesh.position.x = -(spread / 2) + (index * (spread / 3));
+  mesh.castShadow = true;
+
+  return mesh;
+}
+
 /**
  * hittableNotes acts as a queue, first in first out. This allows
  * us to efficiently check whether a note was hit or not since the
@@ -58,6 +104,9 @@ const arrowElMap = {};
  *
  * Nodes should be removed from the queue when they reach
  * 90 percent completion.
+ *
+ * Even though notes are not hittable until 70 percent completion,
+ * they will still be present from 0 to 90 for simplicity's sake.
  */
 const hittableNotes = [];
 
@@ -68,45 +117,11 @@ const hittableNotes = [];
  */
 const activeNotes = [];
 
-function genNoteMesh(index) { // Index being a note index from 0-3.
-  // const boxDim = 50;
-  // const box = new THREE.BoxGeometry(boxDim, boxDim, boxDim);
-  const material = new THREE.MeshStandardMaterial({
-    color: 0x6F6CC5,
-    // specular: 0x111111,
-    // shininess: 1,
-    wireframe: false,
-    metalness: 0.7,
-  });
-
-  const boardRange = 300;
-
-  const mesh = models.arrow.clone();
-  mesh.material = material;
-
-  mesh.scale.x = 50;
-  mesh.scale.y = 50;
-  mesh.scale.z = 200;
-
-  // left, up, down, right
-  const rotationMultipliers = [2, 3, 1, 0];
-
-  mesh.rotation.x = (90 * Math.PI) / 180;
-  mesh.rotation.z = ((90 * rotationMultipliers[index]) * Math.PI) / 180;
-
-  mesh.position.y += 80;
-  mesh.position.x = (-(boardRange / 2)) + (index * (boardRange / 3));
-  mesh.castShadow = true;
-
-  return mesh;
-}
-
-/**
- * Generates a note and appends it the to the noteContainer.
- */
+// Generates a note and appends it the to the noteContainer.
 function startNote(noteArr) {
-  const group = new THREE.Object3D(); // The note mesh container
+  const group = new THREE.Group(); // The note mesh container
 
+  // Create a mesh for all of the active notes.
   for (let i = 0; i < noteArr.length; i += 1) {
     if (noteArr[i]) {
       const noteMesh = genNoteMesh(i);
@@ -122,36 +137,20 @@ function startNote(noteArr) {
     group,
     _isHittable: true,
     _percentComplete: 0,
-    getNoteMesh(direction) {
-      const index =
-        this.group.children
-          .map(mesh => mesh.direction)
-            .indexOf(directions[direction]);
-      if (index > -1) {
-        return this.group.children[index];
-      }
-      return null;
-    },
     getPercentComplete() {
       return this._percentComplete;
     },
     addPercentComplete(p) {
-      return this._percentComplete += p;
+      this._percentComplete += p;
     },
     remove(i) {
-      /*
-      const children = scene.children;
-      const groupIndex = children.map(group => group.uuid).indexOf(this.uuid);
-      if (groupIndex < 0) {
-        throw new Error("Expected mesh group to be a child of the scene.");
-      }
-      */
       scene.remove(this.group);
       activeNotes.splice(i, 1);
     },
     setNotePosition() {
-      this.group.position.z = startPoint + ((this.getPercentComplete() / 100) * range);
-      this.group.position.y += Math.sin(this.getPercentComplete() * 0.1) * .001;
+      const perc = this.getPercentComplete();
+      this.group.position.z = startPoint + ((perc / 100) * range);
+      this.group.position.y += Math.sin(perc * 0.1); // Makes the arrow fluctuate
     },
     setUnhittable() {
       // Make notes transparent
@@ -205,23 +204,6 @@ document.getElementById("stop-render").onclick = () => {
   playing = false;
 };
 
-const scoreContainer = document.getElementById("score-container");
-
-let score = 0;
-const multiplier = 0;
-
-function addScore(s) {
-  if (typeof s !== "number") {
-    throw new Error("Expected score to be a number.");
-  }
-  score += (s * multiplier);
-  return score;
-}
-
-function getScore() {
-  return score;
-}
-
 function createPerspectiveCamera() {
   camera = new THREE.PerspectiveCamera(
     50,
@@ -241,15 +223,14 @@ function createPerspectiveCamera() {
   });
   */
 
-  camera.position.x = 0.15 * scale;
-  camera.position.y = 0.92 * scale;
-  camera.position.z = 0.61 * scale;
-  
+  camera.position.x = 150;
+  camera.position.y = 920;
+  camera.position.z = 610;
+
   camera.rotation.order = "YXZ";
   camera.rotation.x = -0.84;
   camera.rotation.y = 0.3;
   camera.rotation.z = 6.2;
-
 }
 
 /*
@@ -263,7 +244,7 @@ function createIsometricCamera() {
   camera.position.x = 0.15;
   camera.position.y = .1;
   camera.position.z = 1;
-  
+
   camera.rotation.order = "YXZ";
   camera.rotation.y = - Math.PI / 4;
   camera.rotation.x = Math.atan( - 1 / Math.sqrt( 2 ) );
@@ -287,14 +268,14 @@ function main() {
   });
 
   const boardMesh = new THREE.Mesh(boardGeometry, boardMaterial);
-  boardMesh.position.z = -0.75 * scale;
+  boardMesh.position.z = -750;
   boardMesh.receiveShadow = true;
 
 
   const targetGeometry = new THREE.BoxGeometry(
-    0.5 * scale,
-    0.05 * scale,
-    0.01 * scale);
+    500,
+    50,
+    10);
   const targetMaterial = new THREE.MeshPhongMaterial({
     color: 0x0000ff,
     specular: 0x555555,
@@ -302,46 +283,46 @@ function main() {
   });
 
   const targetMesh = new THREE.Mesh(targetGeometry, targetMaterial);
-  targetMesh.position.y = .1 * scale;
+  targetMesh.position.y = 100;
   targetMesh.position.z = startPoint + (range * 0.8);
 
-  
+
   scene = new THREE.Scene();
   scene.add(boardMesh);
   scene.add(targetMesh);
 
-  const blueLight = new THREE.PointLight(0x0033ff, 1.5, 10 * scale);
-  blueLight.position.set(0.5 * scale, 3.5 * scale, 0);
-  blueLight.castShadow = true;
-  blueLight.shadow.camera.near = 0.01 * scale;
-  blueLight.shadow.camera.far = 5 * scale;
-  blueLight.shadow.mapSize.width = 1800;
-  blueLight.shadow.mapSize.height = 1800;
-  scene.add(blueLight);
-  scene.add(new THREE.PointLightHelper(blueLight, 3));
+  function doStuffWithLight(light) {
+    light.castShadow = true;
+    light.shadow.camera.near = 10;
+    light.shadow.camera.far = 5000;
+    light.shadow.mapSize.width  = 1800;
+    light.shadow.mapSize.height = 1800;
+    scene.add(light);
+    // scene.add(new THREE.PointLightHelper(light, 3));
+    // scene.add(new THREE.CameraHelper(light.shadow.camera));
+  }
 
-  const redLight = new THREE.PointLight(0x00ff00, 1.5, 10 * scale);
-  redLight.position.set(-0.5 * scale, 3.5 * scale, 0);
-  redLight.castShadow = true;
-  redLight.shadow.camera.near = 0.01 * scale;
-  redLight.shadow.camera.far = 5 * scale;
-  redLight.shadow.mapSize.width = 1800;
-  redLight.shadow.mapSize.height = 1800;
-  scene.add(redLight);
-  scene.add(new THREE.CameraHelper(redLight.shadow.camera));
-  scene.add(new THREE.PointLightHelper(redLight, 3));
+  const lights = [
+    { color: 0x0033ff, intensity: 1.5, cutoff: 10000, pos: [500, 3500, 0] },
+    { color: 0x00ff00, intensity: 2.3, cutoff: 10000, pos: [-500, 3500, 0] },
+  ];
+
+  for (let i = 0; i < lights.length; i += 1) {
+    const { color, intensity, cutoff, pos } = lights[i];
+    const light = new THREE.PointLight(color, intensity, cutoff);
+    light.position.set(...pos);
+    doStuffWithLight(light);
+  }
+
 
   const ambLight = new THREE.AmbientLight(0x404040);
   scene.add(ambLight);
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio( window.devicePixelRatio );
+  renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  // renderer.shadowMap.type = THREE.PCFShadowMap;
-  // renderer.shadowMap.soft = true
-  // renderer.shadowMap.width = 2048;
-  // renderer.shadowMap.height = 2048;
+  // renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   console.log({ renderer });
 
   document.body.appendChild(renderer.domElement);
@@ -349,8 +330,30 @@ function main() {
   createPerspectiveCamera();
 }
 
+const genRandomNote = () => {
+  const arr = [];
+
+  for (let i = 0; i < 4; i += 1) {
+    arr.push(Math.random() > 0.75 ? 1 : 0);
+  }
+
+  if (
+    !arr.reduce((x, y) => (x || y), 0) || // No notes
+    arr.reduce((sum, val) => (sum + val), 0) > 2 // More than 2 notes
+  ) {
+    return genRandomNote();
+  }
+
+  return arr;
+};
+
+let totalCycles = 0;
 const cyclesRequired = 30;
 let renderCycles = 0;
+
+const youWantAHeadache = true;
+const wobbleRate = 1;
+const wobble = 1;
 
 function render() {
   if (playing) {
@@ -358,7 +361,8 @@ function render() {
   } else {
     return;
   }
-  // boxes[i].mesh.position.z -= 0.01;
+
+  totalCycles += 1;
 
   if (renderCycles === cyclesRequired) {
     startNote(genRandomNote());
@@ -395,25 +399,16 @@ function render() {
   if (controls) {
     controls.update();
   }
+
+  if (youWantAHeadache) {
+    const rate = 10 / wobbleRate;
+
+    camera.rotation.x += (Math.sin(totalCycles / rate) / 1500) * wobble;
+    camera.rotation.y += (Math.sin((totalCycles / rate) + (Math.PI / 2)) / 1500) * wobble;
+  }
+
   renderer.render(scene, camera);
 }
-
-const genRandomNote = () => {
-  const arr = [];
-
-  for (let i = 0; i < 4; i += 1) {
-    arr.push(Math.random() > 0.75 ? 1 : 0);
-  }
-
-  if (
-    !arr.reduce((x, y) => (x || y), 0) || // No notes
-    arr.reduce((sum, val) => (sum + val), 0) > 2 // More than 2 notes
-  ) {
-    return genRandomNote();
-  }
-
-  return arr;
-};
 
 function onLoad() {
   main();
@@ -445,8 +440,20 @@ function onLoad() {
   });
 }
 
+const arrowMaterial = new THREE.MeshStandardMaterial({
+  color: 0x6F6CC5,
+  wireframe: false,
+  metalness: 0.7,
+});
+
+const arrowScale = {
+  x: 65,
+  y: 65,
+  z: 200,
+};
+
 const assets = [
-  { path: "models/arrow.obj", name: "arrow" },
+  { path: "models/arrow.obj", name: "arrow", material: arrowMaterial, scale: arrowScale },
 ];
 
 (function loadNext(i = 0) {
@@ -458,6 +465,18 @@ const assets = [
           node.receiveShadow = true;
         }
       });
+
+      if (assets[i].metarial) {
+        mesh.material = assets[i].material;
+      }
+
+      if (assets[i].scale) {
+        const { scale } = assets[i];
+        const keys = Object.keys(scale);
+        for (let j = 0; j < keys.length; j += 1) {
+          mesh.scale[keys[j]] = scale[keys[j]];
+        }
+      }
 
       models[assets[i].name] = mesh;
       loadNext(i + 1);

@@ -288,6 +288,8 @@ function main() {
 
 
   scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x000077, 900, 3000);
+  scene.background = new THREE.Color(0x103b56);
   scene.add(boardMesh);
   scene.add(targetMesh);
 

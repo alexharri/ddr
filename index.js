@@ -15,18 +15,209 @@ let renderer;
 let camera;
 let controls;
 
+let totalCycles = 0;
+
+/**
+ * Functions to be executed
+ */
+const _executionQueue = [];
+const _postExecutionQueue = [];
+
+function _runExecutionQueue(post) {
+  const queue = post
+    ? _postExecutionQueue
+    : _executionQueue;
+
+  for (let i = 0; i < queue.length; i += 1) {
+    const current = queue[i];
+    current((100 / current._numExecutions) * (current._currentExecution + 1));
+
+    current._currentExecution += 1;
+    if (current._numExecutions <= current._currentExecution) {
+      console.log("Exceeded max executions");
+      queue.splice(i, 1);
+      if (current._afterExecution) {
+        current._afterExecution();
+      }
+      i -= 1;
+      if (!queue[i]) {
+        return;
+      }
+    }
+  }
+}
+
+function addToExecutionQueue(numEx, func, afterExFunc, opts = {}) {
+  if (typeof func !== "function") {
+    throw new Error("Expected a function to be added to the execution queue");
+  }
+
+  if (typeof numEx !== "number") {
+    throw new Error("Expected the number of executions to be a number");
+  }
+
+  func._numExecutions = numEx;
+  func._currentExecution = 0;
+
+  if (afterExFunc) {
+    func._afterExecution = afterExFunc;
+  }
+
+  if (opts.post) {
+    _postExecutionQueue.push(func);
+  } else {
+    _executionQueue.push(func);
+  }
+}
+
+function getValueInbetween(x, y, percentage) {
+  return ((x / 100) * (100 - percentage)) + ((y / 100) * percentage);
+}
+
+
 /**
  * SETTINGS
  */
-
-const antialias     = true;
-const useShadow     = false;
-const useFog        = true;
+const antialias     = true; // It's not possible to change AA live, a reload is required.
 const useBackground = true;
 
-const useWobble     = true;
-const wobbleRate    = 1;
-const wobble        = 1;
+// Camera settings
+
+const defaultCameraCoords = Object.freeze({
+  x: 150,
+  y: 920,
+  z: 610,
+});
+
+
+const defaultCameraRotation = Object.freeze({
+  x: -0.84,
+  y:  0.3,
+  z:  6.2,
+});
+
+
+// Wobble settings
+let _useWobble     = true;
+let _wobbleRate    = 1;
+let _wobbleWeight  = 1;
+let _globalWobbleSync = 0;
+
+const calcWobble = (axis, syncOff = 0, forceRate) => {
+  const rate = forceRate || _wobbleRate;
+  return defaultCameraRotation[axis] +
+    ((Math.sin((totalCycles / (10 / rate.toFixed(2))) +
+      (Math.PI * (syncOff + _globalWobbleSync))) / 150) * _wobbleWeight);
+};
+
+function setWobbleRate(newRate) {
+  if (typeof newRate !== "number") {
+    throw new Error("Expected wobble rate to be a number.");
+  }
+  const initialRate = _wobbleRate;
+  addToExecutionQueue(
+    Math.max((Math.abs(newRate - initialRate) * 60), 1),
+    (percentage) => {
+      _globalWobbleSync += (getValueInbetween(0, newRate - initialRate, percentage) / (10 * Math.PI));
+      console.log(_globalWobbleSync.toFixed(2));
+    },
+    (percentage) => {
+      _wobbleRate = newRate;
+      /*
+      const initialX = camera.rotation.x;
+      camera.rotation.x = getValueInbetween()
+      addToExecutionQueue(60, () => {
+        camera.rotation
+      }, null, { post: true });
+      */
+    });
+}
+
+function setWobbleWeight(newWeight) {
+  if (typeof newWeight !== "number") {
+    throw new Error("Expected wobble weight to be a number.");
+  }
+  const initialWeight = _wobbleWeight;
+  addToExecutionQueue(100, (percentage) => {
+    _wobbleWeight = getValueInbetween(initialWeight, newWeight, percentage);
+  });
+}
+
+function toggleWobble() {
+  _useWobble = !_useWobble;
+}
+
+window.setWobbleWeight  = setWobbleWeight;
+window.setWobbleRate    = setWobbleRate;
+window.toggleWobble     = toggleWobble;
+
+
+// Shadow setttings
+
+let   _useShadows = true;
+const _shadowReceivers = {};
+
+function toggleShadows() {
+  _useShadows = !_useShadows;
+  renderer.shadowMap.enabled = _useShadows;
+
+  const keys = Object.keys(_shadowReceivers);
+  for (let i = 0; i < keys.length; i += 1) {
+    _shadowReceivers[keys[i]].material.needsUpdate = true;
+  }
+}
+
+// Memory leak debugging
+window.getNumShadowReceivers = () => Object.keys(_shadowReceivers).length;
+
+// Fog settings
+let _useFog    = true;
+let _fogNear  = 900;
+let _fogFar   = 3000;
+
+function toggleFog() {
+  _useFog = !_useFog;
+  if (_useFog) {
+    scene.fog.near  = _fogNear;
+    scene.fog.far   = _fogFar;
+  } else {
+    scene.fog.near = 0.1;
+    scene.fog.far = 0;
+  }
+}
+
+function setFogNear(n) {
+  if (typeof n !== "number") {
+    throw new Error("Expected fogNear to be a number.");
+  }
+  _fogNear = n;
+  scene.fog.near = _fogNear;
+}
+
+function setFogFar(n) {
+  if (typeof n !== "number") {
+    throw new Error("Expected fogNear to be a number.");
+  }
+  _fogFar = n;
+  scene.fog.far = _fogFar;
+}
+
+window.toggleFog  = toggleFog;
+window.setFogFar  = setFogFar;
+window.setFogNear = setFogNear;
+
+window.toggleShadows = toggleShadows;
+
+function receiveShadow(mesh) {
+  mesh.receiveShadow = true;
+  _shadowReceivers[mesh.uuid] = mesh;
+}
+
+function removeShadowReceiver(uuid) {
+  if (_shadowReceivers[uuid]) {
+    delete _shadowReceivers[uuid];
+  }
+}
 
 
 /**
@@ -72,7 +263,7 @@ const arrowElMap = {};
 const scoreContainer = document.getElementById("score-container");
 
 let score = 0;
-const scoreMultiplier = 0;
+const scoreMultiplier = 1;
 
 function addScore(s) {
   if (typeof s !== "number") {
@@ -91,6 +282,7 @@ function getScore() {
 
 function genNoteMesh(index) { // Index being a note index from 0-3.
   const mesh = models.arrow.clone();
+  mesh.castShadow = true;
 
   // left, up, down, right
   const rotationMultipliers = [2, 3, 1, 0];
@@ -106,7 +298,7 @@ function genNoteMesh(index) { // Index being a note index from 0-3.
 
   mesh.position.y = 80;
   mesh.position.x = -(spread / 2) + (index * (spread / 3));
-  mesh.castShadow = useShadow;
+  mesh.castShadow = true;
 
   return mesh;
 }
@@ -215,7 +407,10 @@ function startNote(noteArr) {
 let playing = false;
 
 document.getElementById("stop-render").onclick = () => {
-  playing = false;
+  playing = !playing;
+  if (playing) {
+    render();
+  }
 };
 
 function createPerspectiveCamera() {
@@ -237,14 +432,14 @@ function createPerspectiveCamera() {
   });
   */
 
-  camera.position.x = 150;
-  camera.position.y = 920;
-  camera.position.z = 610;
+  camera.position.x = defaultCameraCoords.x;
+  camera.position.y = defaultCameraCoords.y;
+  camera.position.z = defaultCameraCoords.z;
 
   camera.rotation.order = "YXZ";
-  camera.rotation.x = -0.84;
-  camera.rotation.y = 0.3;
-  camera.rotation.z = 6.2;
+  camera.rotation.x = defaultCameraRotation.x;
+  camera.rotation.y = defaultCameraRotation.y;
+  camera.rotation.z = defaultCameraRotation.z;
 }
 
 /*
@@ -283,8 +478,7 @@ function main() {
 
   const boardMesh = new THREE.Mesh(boardGeometry, boardMaterial);
   boardMesh.position.z = -750;
-  boardMesh.receiveShadow = useShadow;
-
+  receiveShadow(boardMesh);
 
   const targetGeometry = new THREE.BoxGeometry(
     500,
@@ -302,8 +496,8 @@ function main() {
 
 
   scene = new THREE.Scene();
-  if (useFog) {
-    scene.fog = new THREE.Fog(0x000077, 900, 3000);
+  if (_useFog) {
+    scene.fog = new THREE.Fog(0x000077, _fogNear, _fogFar);
   }
   if (useBackground) {
     scene.background = new THREE.Color(0x103b56);
@@ -312,11 +506,11 @@ function main() {
   scene.add(targetMesh);
 
   function doStuffWithLight(light) {
-    light.castShadow = useShadow;
+    light.castShadow = true;
     light.shadow.camera.near = 10;
     light.shadow.camera.far = 5000;
-    light.shadow.mapSize.width  = 1800;
-    light.shadow.mapSize.height = 1800;
+    light.shadow.mapSize.width  = 512;
+    light.shadow.mapSize.height = 512;
     scene.add(light);
     // scene.add(new THREE.PointLightHelper(light, 3));
     // scene.add(new THREE.CameraHelper(light.shadow.camera));
@@ -341,10 +535,11 @@ function main() {
   renderer = new THREE.WebGLRenderer({ antialias });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = _useShadows;
   // renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   console.log({ renderer });
 
+  window.renderer = renderer;
   document.body.appendChild(renderer.domElement);
 
   createPerspectiveCamera();
@@ -367,7 +562,6 @@ const genRandomNote = () => {
   return arr;
 };
 
-let totalCycles = 0;
 const cyclesRequired = 30;
 let renderCycles = 0;
 
@@ -379,6 +573,8 @@ function render() {
   }
 
   totalCycles += 1;
+
+  _runExecutionQueue();
 
   if (renderCycles === cyclesRequired) {
     startNote(genRandomNote());
@@ -416,11 +612,9 @@ function render() {
     controls.update();
   }
 
-  if (useWobble) {
-    const rate = 10 / wobbleRate;
-
-    camera.rotation.x += (Math.sin(totalCycles / rate) / 1500) * wobble;
-    camera.rotation.y += (Math.sin((totalCycles / rate) + (Math.PI / 2)) / 1500) * wobble;
+  if (_useWobble) {
+    camera.rotation.x = calcWobble("x", 0);
+    camera.rotation.y = calcWobble("y", 0.5);
   }
 
   renderer.render(scene, camera);
@@ -477,7 +671,7 @@ const assets = [
     loader.load(assets[i].path, (mesh) => {
       mesh.traverse((node) => {
         if (node instanceof THREE.Mesh) {
-          node.castShadow = useShadow;
+          node.castShadow = true;
         }
       });
 

@@ -16,6 +16,20 @@ let camera;
 let controls;
 
 /**
+ * SETTINGS
+ */
+
+const antialias     = true;
+const useShadow     = false;
+const useFog        = true;
+const useBackground = true;
+
+const useWobble     = true;
+const wobbleRate    = 1;
+const wobble        = 1;
+
+
+/**
  * startPoint is the point on the board on which the arrows start
  * endPoint is the point at which they disappear.
  * range is the distance between the end and start.
@@ -92,7 +106,7 @@ function genNoteMesh(index) { // Index being a note index from 0-3.
 
   mesh.position.y = 80;
   mesh.position.x = -(spread / 2) + (index * (spread / 3));
-  mesh.castShadow = true;
+  mesh.castShadow = useShadow;
 
   return mesh;
 }
@@ -269,7 +283,7 @@ function main() {
 
   const boardMesh = new THREE.Mesh(boardGeometry, boardMaterial);
   boardMesh.position.z = -750;
-  boardMesh.receiveShadow = true;
+  boardMesh.receiveShadow = useShadow;
 
 
   const targetGeometry = new THREE.BoxGeometry(
@@ -288,13 +302,17 @@ function main() {
 
 
   scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x000077, 900, 3000);
-  scene.background = new THREE.Color(0x103b56);
+  if (useFog) {
+    scene.fog = new THREE.Fog(0x000077, 900, 3000);
+  }
+  if (useBackground) {
+    scene.background = new THREE.Color(0x103b56);
+  }
   scene.add(boardMesh);
   scene.add(targetMesh);
 
   function doStuffWithLight(light) {
-    light.castShadow = true;
+    light.castShadow = useShadow;
     light.shadow.camera.near = 10;
     light.shadow.camera.far = 5000;
     light.shadow.mapSize.width  = 1800;
@@ -320,7 +338,7 @@ function main() {
   const ambLight = new THREE.AmbientLight(0x404040);
   scene.add(ambLight);
 
-  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer = new THREE.WebGLRenderer({ antialias });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
@@ -352,10 +370,6 @@ const genRandomNote = () => {
 let totalCycles = 0;
 const cyclesRequired = 30;
 let renderCycles = 0;
-
-const youWantAHeadache = true;
-const wobbleRate = 1;
-const wobble = 1;
 
 function render() {
   if (playing) {
@@ -402,7 +416,7 @@ function render() {
     controls.update();
   }
 
-  if (youWantAHeadache) {
+  if (useWobble) {
     const rate = 10 / wobbleRate;
 
     camera.rotation.x += (Math.sin(totalCycles / rate) / 1500) * wobble;
@@ -463,8 +477,7 @@ const assets = [
     loader.load(assets[i].path, (mesh) => {
       mesh.traverse((node) => {
         if (node instanceof THREE.Mesh) {
-          node.castShadow = true;
-          node.receiveShadow = true;
+          node.castShadow = useShadow;
         }
       });
 

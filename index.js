@@ -4,10 +4,11 @@ import genEl from "./src/utils/genEl";
 import "./styles.css";
 
 const THREE = require("three"); // Import doesn't work.
-require("three-orbit-controls")(THREE);
+const OrbitControls = require("three-orbit-controls")(THREE);
 require("three-obj-loader")(THREE);
 
-const loader = new THREE.OBJLoader();
+window.THREE = THREE;
+const objLoader = new THREE.OBJLoader();
 
 
 let scene;
@@ -83,6 +84,8 @@ const useBackground = true;
 
 // Camera settings
 
+const USE_ORBIT_CONTROLS = false; // Orbit helper
+
 const defaultCameraCoords = Object.freeze({
   x: 150,
   y: 920,
@@ -98,7 +101,7 @@ const defaultCameraRotation = Object.freeze({
 
 
 // Wobble settings
-let _useWobble     = true;
+let _useWobble     = true && !USE_ORBIT_CONTROLS; // Wobble messes with orbit
 let _wobbleRate    = 1;
 let _wobbleWeight  = 1;
 let _globalWobbleSync = 0;
@@ -117,11 +120,11 @@ function setWobbleRate(newRate) {
   const initialRate = _wobbleRate;
   addToExecutionQueue(
     Math.max((Math.abs(newRate - initialRate) * 60), 1),
-    (percentage) => {
-      _globalWobbleSync += (getValueInbetween(0, newRate - initialRate, percentage) / (10 * Math.PI));
+    (perc) => {
+      _globalWobbleSync += (getValueInbetween(0, newRate - initialRate, perc) / (10 * Math.PI));
       console.log(_globalWobbleSync.toFixed(2));
     },
-    (percentage) => {
+    () => {
       _wobbleRate = newRate;
       /*
       const initialX = camera.rotation.x;
@@ -168,7 +171,7 @@ function toggleShadows() {
 }
 
 // Memory leak debugging
-window.getNumShadowReceivers = () => Object.keys(_shadowReceivers).length;
+// window.getNumShadowReceivers = () => Object.keys(_shadowReceivers).length;
 
 // Fog settings
 let _useFog    = true;
@@ -213,11 +216,13 @@ function receiveShadow(mesh) {
   _shadowReceivers[mesh.uuid] = mesh;
 }
 
+/* We don't happen to use this function
 function removeShadowReceiver(uuid) {
   if (_shadowReceivers[uuid]) {
     delete _shadowReceivers[uuid];
   }
 }
+*/
 
 
 /**
@@ -230,8 +235,10 @@ const endPoint = 500;
 const range = Math.abs(startPoint) + endPoint;
 
 
-// The meshes created from .obj 3D models that we will use.
-const models = {};
+const models = {}; // The meshes created from .obj 3D models that we will use.
+const fonts = {}; // Font's loaded from .json files to use for 3D text.
+const texts = {}; // The actual 3D meshes.
+
 
 // The directios that the notes will use
 const directions = ["LEFT", "UP", "DOWN", "RIGHT"];
@@ -387,11 +394,31 @@ function startNote(noteArr) {
         this.notes[directionIndex] = 0;
       } else {
         console.log("WRONG NOTE");
+
+        // Creating the miss text
+        const text = texts.miss.clone();
+        text.position.y = 0;
+        text.position.x = -400;
+        scene.add(text);
+        addToExecutionQueue(150,
+          () => {
+            text.position.y += 10;
+          },
+          () => scene.remove(text));
       }
 
       // Runs if all notes have been hit
       if (!this.notes.reduce((x, y) => (x || y), 0)) {
-        // Render hit animation or something
+        // Creating the hit text
+        const text = texts.hit.clone();
+        text.position.y = 0;
+        text.position.x = -400;
+        scene.add(text);
+        addToExecutionQueue(150,
+          () => {
+            text.position.y += 10;
+          },
+          () => scene.remove(text));
         this.setUnhittable();
         this.isHit = true;
         addScore(50);
@@ -421,16 +448,13 @@ function createPerspectiveCamera() {
     10000,
   );
 
-  /*
-  controls = new OrbitControls(camera, renderer.domElement)
-  // controls.target.set(0, 0, 0);
-  controls.enableDamping = true;
-  controls.dampingFactor = .3;
-  controls.rotateSpeed = 2;
-  controls.addEventListener("change", () => {
-    console.log(camera.rotation, camera.position);
-  });
-  */
+  if (USE_ORBIT_CONTROLS) {
+    controls = new OrbitControls(camera, renderer.domElement);
+    // controls.target.set(0, 0, 0);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.3;
+    controls.rotateSpeed = 2;
+  }
 
   camera.position.x = defaultCameraCoords.x;
   camera.position.y = defaultCameraCoords.y;
@@ -519,6 +543,7 @@ function main() {
   const lights = [
     { color: 0x0033ff, intensity: 1.5, cutoff: 10000, pos: [500, 3500, 0] },
     { color: 0x00ff00, intensity: 2.3, cutoff: 10000, pos: [-500, 3500, 0] },
+    { color: 0xff0000, intensity: 2.3, cutoff: 10000, pos: [-500, -500, 1000] },
   ];
 
   for (let i = 0; i < lights.length; i += 1) {
@@ -588,7 +613,6 @@ function render() {
     const percentageComplete = note.getPercentComplete();
     if (note.isHittable && percentageComplete > 85) {
       note.setUnhittable(); // The user can't hit the note anymore
-      // Render miss
     }
     if (percentageComplete > 130) {
       note.remove(i); // Removes it from the scene and activeNotes array
@@ -656,41 +680,112 @@ const arrowMaterial = new THREE.MeshStandardMaterial({
   metalness: 0.7,
 });
 
-const arrowScale = {
-  x: 65,
-  y: 65,
-  z: 200,
-};
+function loadModels() {
+  const assets = [
+    {
+      path: "models/arrow.obj",
+      name: "arrow",
+      material: arrowMaterial,
+      scale: { x: 65, y: 65, z: 200 },
+    },
+  ];
 
-const assets = [
-  { path: "models/arrow.obj", name: "arrow", material: arrowMaterial, scale: arrowScale },
-];
+  return new Promise(resolve => (function loadNext(i = 0) {
+    if (assets[i]) {
+      objLoader.load(assets[i].path, (mesh) => {
+        mesh.traverse((node) => {
+          if (node instanceof THREE.Mesh) {
+            node.castShadow = true;
+          }
+        });
 
-(function loadNext(i = 0) {
-  if (assets[i]) {
-    loader.load(assets[i].path, (mesh) => {
-      mesh.traverse((node) => {
-        if (node instanceof THREE.Mesh) {
-          node.castShadow = true;
+        if (assets[i].material) {
+          mesh.material = assets[i].material;
         }
+
+        if (assets[i].scale) {
+          const { scale } = assets[i];
+          const keys = Object.keys(scale);
+          for (let j = 0; j < keys.length; j += 1) {
+            mesh.scale[keys[j]] = scale[keys[j]];
+          }
+        }
+
+        models[assets[i].name] = mesh;
+        loadNext(i + 1);
       });
+    } else {
+      resolve();
+    }
+  }()));
+}
 
-      if (assets[i].metarial) {
-        mesh.material = assets[i].material;
-      }
+function loadFonts() {
+  const FontLoader = new THREE.FontLoader();
+  const assets = [
+    {
+      path: "fonts/shrikhand_regular.json",
+      name: "shrikhand",
+    },
+  ];
+  return new Promise(resolve => (function loadNext(i = 0) {
+    if (assets[i]) {
+      FontLoader.load(assets[i].path, (font) => {
+        fonts[assets[i].name] = font;
+        loadNext(i + 1);
+      });
+    } else {
+      resolve();
+    }
+  }()));
+}
 
-      if (assets[i].scale) {
-        const { scale } = assets[i];
-        const keys = Object.keys(scale);
-        for (let j = 0; j < keys.length; j += 1) {
-          mesh.scale[keys[j]] = scale[keys[j]];
-        }
-      }
+const createTextMeshes = () => new Promise((resolve) => {
+  const textStyles = [
+    {
+      name: "miss",
+      text: "Miss!",
+      material: new THREE.MeshStandardMaterial({
+        color: 0x444444,
+        wireframe: false,
+        metalness: 0.7,
+      }),
+      opts: {
+        font: fonts.shrikhand,
+        size: 50,
+        height: 5,
+      },
+    },
+    {
+      name: "hit",
+      text: "Great!",
+      material: new THREE.MeshStandardMaterial({
+        color: 0xff0000,
+        metalness: 0.8,
+      }),
+      opts: {
+        font: fonts.shrikhand,
+        size: 50,
+        height: 5,
+      },
+    },
+  ];
 
-      models[assets[i].name] = mesh;
-      loadNext(i + 1);
-    });
-  } else {
-    onLoad();
+  for (let i = 0; i < textStyles.length; i += 1) {
+    const { name, text, material, opts } = textStyles[i];
+
+    const textGeometry = new THREE.TextGeometry(text, opts);
+
+    const textMesh = new THREE.Mesh(textGeometry, material);
+    texts[name] = textMesh;
   }
-}());
+
+  console.log(texts);
+
+  resolve();
+});
+
+loadModels()
+  .then(loadFonts)
+  .then(createTextMeshes)
+  .then(onLoad);

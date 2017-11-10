@@ -1,7 +1,11 @@
 /* eslint-disable no-underscore-dangle */
 
 import genEl from "./src/utils/genEl";
+// import spotify from "./src/spotify";
 import "./styles.css";
+
+// spotify("glow");
+// throw new Error("Hello");
 
 const THREE = require("three"); // Import doesn't work.
 const OrbitControls = require("three-orbit-controls")(THREE);
@@ -398,7 +402,7 @@ function startNote(noteArr) {
         // Creating the miss text
         const text = texts.miss.clone();
         text.position.y = 0;
-        text.position.x = -400;
+        text.position.x = -500;
         scene.add(text);
         addToExecutionQueue(150,
           () => {
@@ -412,7 +416,7 @@ function startNote(noteArr) {
         // Creating the hit text
         const text = texts.hit.clone();
         text.position.y = 0;
-        text.position.x = -400;
+        text.position.x = -500;
         scene.add(text);
         addToExecutionQueue(150,
           () => {
@@ -543,7 +547,7 @@ function main() {
   const lights = [
     { color: 0x0033ff, intensity: 1.5, cutoff: 10000, pos: [500, 3500, 0] },
     { color: 0x00ff00, intensity: 2.3, cutoff: 10000, pos: [-500, 3500, 0] },
-    { color: 0xff0000, intensity: 2.3, cutoff: 10000, pos: [-500, -500, 1000] },
+    { color: 0xffffff, intensity: 0.5, cutoff: 10000, pos: [-800, -500, 1000] },
   ];
 
   for (let i = 0; i < lights.length; i += 1) {

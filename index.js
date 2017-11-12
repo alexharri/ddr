@@ -1,12 +1,6 @@
 /* eslint-disable no-underscore-dangle */
 
-import genEl from "./src/utils/genEl";
-// import spotify from "./src/spotify";
-import "./styles.css";
-
-// spotify("glow");
-// throw new Error("Hello");
-
+const SpotifyWebApi = require("spotify-web-api-node");
 const THREE = require("three"); // Import doesn't work.
 const OrbitControls = require("three-orbit-controls")(THREE);
 require("three-obj-loader")(THREE);
@@ -14,24 +8,48 @@ require("three-obj-loader")(THREE);
 window.THREE = THREE;
 const objLoader = new THREE.OBJLoader();
 
+const khzSecond = 44100; // Represents one second of audio data.
 
+const accessToken = window.location.hash
+  .substr(window.location.hash.indexOf("access_token="))
+  .split("&")[0]
+  .split("=")[1];
+
+const spotify = new SpotifyWebApi({
+  clientId:     "b7e6e7cef1c74629ab74d4f89ec088c0",
+  redirectUri:  "http://localhost:8080",
+  accessToken,
+});
+
+const button = document.getElementById("spotify-access");
+if (accessToken) {
+  button.parentNode.removeChild(button);
+} else {
+  button.onclick = () => {
+    const authorizeURL = "https://accounts.spotify.com/en/authorize?client_id=b7e6e7cef1c74629ab74d4f89ec088c0&response_type=token&redirect_uri=http:%2F%2Flocalhost:8080&scope=&state=";
+    window.open(authorizeURL);
+  };
+}
+
+/**
+ * Globals that will be used at various points of the program.
+ */
 let scene;
 let renderer;
 let camera;
 let controls;
-
+let peaks;
+let audioData;
+let waveformData;
 let totalCycles = 0;
 
 /**
- * Functions to be executed
+ * Functions to be executed once per frame
  */
 const _executionQueue = [];
-const _postExecutionQueue = [];
 
-function _runExecutionQueue(post) {
-  const queue = post
-    ? _postExecutionQueue
-    : _executionQueue;
+function _runExecutionQueue() {
+  const queue = _executionQueue;
 
   for (let i = 0; i < queue.length; i += 1) {
     const current = queue[i];
@@ -52,7 +70,7 @@ function _runExecutionQueue(post) {
   }
 }
 
-function addToExecutionQueue(numEx, func, afterExFunc, opts = {}) {
+function addToExecutionQueue(numEx, func, afterExFunc) {
   if (typeof func !== "function") {
     throw new Error("Expected a function to be added to the execution queue");
   }
@@ -68,11 +86,7 @@ function addToExecutionQueue(numEx, func, afterExFunc, opts = {}) {
     func._afterExecution = afterExFunc;
   }
 
-  if (opts.post) {
-    _postExecutionQueue.push(func);
-  } else {
-    _executionQueue.push(func);
-  }
+  _executionQueue.push(func);
 }
 
 function getValueInbetween(x, y, percentage) {
@@ -81,40 +95,71 @@ function getValueInbetween(x, y, percentage) {
 
 
 /**
- * SETTINGS
+ * === SETTINGS ===
+ *
+ * An underscore means that the property should not be changed
+ * without a setter.
+ *
+ * If a property
  */
-const antialias     = true; // It's not possible to change AA live, a reload is required.
-const useBackground = true;
+
+// Common settings
+const _antialias     = true; // It's not possible to change AA live, a reload is required.
+const _useBackground = true;
+
+/**
+ * Notefrequency determines the frequency of peaks.
+ * Peaks per second = second / noteFrequency.
+ *
+ * 1    = 1 peak  per second.
+ * 0.5  = 2 peaks per second.
+ * 0.25 = 4 peaks per second.
+ */
+const _noteFrequency = 0.25;
+const _percentNotesToKeep = 0.75;
+
+// Note settings
+const _minMillisecondBetweenPeaks = 150; // No two notes may be closer than this.
 
 // Camera settings
-
-const USE_ORBIT_CONTROLS = false; // Orbit helper
-
-const defaultCameraCoords = Object.freeze({
+const _useOrbitControls = false; // Orbit helper
+const _defaultCameraCoords = Object.freeze({
   x: 150,
   y: 920,
   z: 610,
 });
-
-
-const defaultCameraRotation = Object.freeze({
+const _defaultCameraRotation = Object.freeze({
   x: -0.84,
   y:  0.3,
   z:  6.2,
 });
 
+// Waveform settings
+const _useWaveform = true;
+const _waveformDataPointsPerFrame = 2;
+const _waveformSpeed = 2;
 
 // Wobble settings
-let _useWobble     = true && !USE_ORBIT_CONTROLS; // Wobble messes with orbit
-let _wobbleRate    = 1;
-let _wobbleWeight  = 1;
+let _useWobble        = true && !_useOrbitControls; // Wobble messes with orbit
+let _wobbleRate       = 1;
+let _wobbleWeight     = 1;
 let _globalWobbleSync = 0;
+
+// Shadow setttings
+let   _useShadows = true;
+const _shadowMapSize = 512;
+const _shadowReceivers = {};
+
+// Fog settings
+let _useFog   = true;
+let _fogNear  =  900;
+let _fogFar   = 3000;
 
 const calcWobble = (axis, syncOff = 0, forceRate) => {
   const rate = forceRate || _wobbleRate;
-  return defaultCameraRotation[axis] +
+  return _defaultCameraRotation[axis] +
     ((Math.sin((totalCycles / (10 / rate.toFixed(2))) +
-      (Math.PI * (syncOff + _globalWobbleSync))) / 150) * _wobbleWeight);
+      (Math.PI * (syncOff + _globalWobbleSync))) / 150) * _wobbleWeight /* * volume * 0.1) */);
 };
 
 function setWobbleRate(newRate) {
@@ -130,13 +175,6 @@ function setWobbleRate(newRate) {
     },
     () => {
       _wobbleRate = newRate;
-      /*
-      const initialX = camera.rotation.x;
-      camera.rotation.x = getValueInbetween()
-      addToExecutionQueue(60, () => {
-        camera.rotation
-      }, null, { post: true });
-      */
     });
 }
 
@@ -154,15 +192,10 @@ function toggleWobble() {
   _useWobble = !_useWobble;
 }
 
+// Demonstration purposes
 window.setWobbleWeight  = setWobbleWeight;
 window.setWobbleRate    = setWobbleRate;
 window.toggleWobble     = toggleWobble;
-
-
-// Shadow setttings
-
-let   _useShadows = true;
-const _shadowReceivers = {};
 
 function toggleShadows() {
   _useShadows = !_useShadows;
@@ -170,17 +203,12 @@ function toggleShadows() {
 
   const keys = Object.keys(_shadowReceivers);
   for (let i = 0; i < keys.length; i += 1) {
-    _shadowReceivers[keys[i]].material.needsUpdate = true;
+    _shadowReceivers[keys[i]].material.needsUpdate = true; // Force a material redraw
   }
 }
 
-// Memory leak debugging
-// window.getNumShadowReceivers = () => Object.keys(_shadowReceivers).length;
-
-// Fog settings
-let _useFog    = true;
-let _fogNear  = 900;
-let _fogFar   = 3000;
+// Demonstration purposes
+window.toggleShadows = toggleShadows;
 
 function toggleFog() {
   _useFog = !_useFog;
@@ -188,6 +216,10 @@ function toggleFog() {
     scene.fog.near  = _fogNear;
     scene.fog.far   = _fogFar;
   } else {
+    /**
+     * It's impossible to remove fog if it has been added to a scene
+     * so we just make it effectively invisible.
+     */
     scene.fog.near = 0.1;
     scene.fog.far = 0;
   }
@@ -209,18 +241,17 @@ function setFogFar(n) {
   scene.fog.far = _fogFar;
 }
 
+// Demonstration purposes
 window.toggleFog  = toggleFog;
 window.setFogFar  = setFogFar;
 window.setFogNear = setFogNear;
-
-window.toggleShadows = toggleShadows;
 
 function receiveShadow(mesh) {
   mesh.receiveShadow = true;
   _shadowReceivers[mesh.uuid] = mesh;
 }
 
-/* We don't happen to use this function
+/* We don't happen to need this function
 function removeShadowReceiver(uuid) {
   if (_shadowReceivers[uuid]) {
     delete _shadowReceivers[uuid];
@@ -244,13 +275,10 @@ const fonts = {}; // Font's loaded from .json files to use for 3D text.
 const texts = {}; // The actual 3D meshes.
 
 
-// The directios that the notes will use
+// The directions that the notes will use
 const directions = ["LEFT", "UP", "DOWN", "RIGHT"];
 
-/**
- * This contains the elements that represent the arrow keys
- * in the UI.
- */
+// This contains the elements that represent the arrow keys in the UI.
 const arrowElMap = {};
 
 {
@@ -261,11 +289,10 @@ const arrowElMap = {};
 
   for (let i = 0; i < directions.length; i += 1) {
     const direction = directions[i];
-    const el = genEl(
-      "div",
-      ["arrow", genArrowId(direction)],
-      null,
-      { id: genArrowId(direction) });
+    const el = document.createElement("div");
+    el.classList.add("arrow");
+    el.classList.add(genArrowId(direction));
+    el.id = genArrowId(direction);
     arrowElMap[direction] = el;
     arrowContainer.appendChild(el);
   }
@@ -334,6 +361,14 @@ const hittableNotes = [];
  */
 const activeNotes = [];
 
+/**
+ * Functions in the same way as activeNotes, except this is for
+ * the waveform mesh groups.
+ */
+const activeWaveformFrames = [];
+
+const visualOffsetPerc = 5;
+
 // Generates a note and appends it the to the noteContainer.
 function startNote(noteArr) {
   const group = new THREE.Group(); // The note mesh container
@@ -354,28 +389,32 @@ function startNote(noteArr) {
     group,
     _isHittable: true,
     _percentComplete: 0,
+    isHittable() {
+      return this._isHittable;
+    },
     getPercentComplete() {
       return this._percentComplete;
     },
-    addPercentComplete(p) {
-      this._percentComplete += p;
-    },
     remove(i) {
+      if (this.isHittable()) {
+        this.setUnhittable(); // To make sure it isn't kept in the unhittable array.
+      }
       scene.remove(this.group);
       activeNotes.splice(i, 1);
     },
-    setNotePosition() {
-      const perc = this.getPercentComplete();
-      this.group.position.z = startPoint + ((perc / 100) * range);
+    update(moveHowManyFrames = 1) {
+      this._percentComplete += ((60 / 100) * moveHowManyFrames);
+      const perc = this._percentComplete;
+      this.group.position.z = startPoint + (((perc + visualOffsetPerc) / 100) * range);
       this.group.position.y += Math.sin(perc * 0.1); // Makes the arrow fluctuate
+
+      if (this.isHittable() && perc > (85 - visualOffsetPerc)) {
+        this.setUnhittable();
+      }
     },
     setUnhittable() {
-      // Make notes transparent
       hittableNotes.shift();
-      this.isHittable = false;
-    },
-    isHittable() {
-      return this._isHittable;
+      this._isHittable = false;
     },
     isHit: false,
     notes: [...noteArr],
@@ -389,8 +428,16 @@ function startNote(noteArr) {
         throw new Error("Invalid direction provided");
       }
 
-      if (this.getPercentComplete() < 75) {
-        console.log("TOO EARLY");
+      if (this.getPercentComplete() < (75 - visualOffsetPerc)) {
+        const text = texts.miss.clone();
+        text.position.y = 0;
+        text.position.x = -500;
+        scene.add(text);
+        addToExecutionQueue(150,
+          () => {
+            text.position.y += 10;
+          },
+          () => scene.remove(text));
         return;
       }
 
@@ -435,14 +482,66 @@ function startNote(noteArr) {
   return item;
 }
 
-let playing = false;
+function genWaveformFrame(frameVolumeArr, frameOffset = 0) {
+  const group = new THREE.Group(); // The note mesh container
 
-document.getElementById("stop-render").onclick = () => {
-  playing = !playing;
-  if (playing) {
-    render();
+  if (frameOffset > 0) {
+    console.log(frameOffset);
   }
-};
+
+  const barMaterial = new THREE.MeshPhongMaterial({
+    color: 0xff0000,
+    specular: 0x666666,
+    shininess: 15,
+  });
+
+  const waveformRange = range * _waveformSpeed;
+  const waveformStart = startPoint * _waveformSpeed;
+
+  const frameWidthY = waveformRange / 60;
+  const yPeak = frameWidthY / frameVolumeArr.length; // Width of each datapoint
+
+  for (let i = 0; i < frameVolumeArr.length; i += 1) {
+    const xPeak = Math.ceil(500 * frameVolumeArr[i]); // Height of datapoint (volume)
+
+    const barGeometry = new THREE.ShapeGeometry(new THREE.Shape([
+      new THREE.Vector2(0,      0), // offset
+      new THREE.Vector2(0,      0),
+      new THREE.Vector2(xPeak,  0),
+      new THREE.Vector2(xPeak,  yPeak),
+      new THREE.Vector2(0,      yPeak),
+    ]));
+
+    const mesh = new THREE.Mesh(barGeometry, barMaterial);
+    mesh.rotation.x -= Math.PI / 4; // So the plane faces the right direction
+    mesh.position.z += yPeak * i;
+    // mesh.position.x -= (xPeak / 2); // center waveform
+
+    group.add(mesh);
+  }
+
+  scene.add(group);
+  // group.position.y = 30; // Above the board
+  group.position.x = 200;
+
+  return {
+    group,
+    _percentComplete: frameOffset * (60 / 100),
+    getPercentComplete() {
+      return this._percentComplete;
+    },
+    remove(i) {
+      scene.remove(this.group);
+      activeWaveformFrames.splice(i, 1);
+    },
+    update(moveHowManyFrames = 1) {
+      this._percentComplete += (60 / 100) * moveHowManyFrames;
+      this.group.position.z = waveformStart + ((this._percentComplete / 100) * waveformRange);
+    },
+  };
+}
+
+let playing = false;
 
 function createPerspectiveCamera() {
   camera = new THREE.PerspectiveCamera(
@@ -452,7 +551,7 @@ function createPerspectiveCamera() {
     10000,
   );
 
-  if (USE_ORBIT_CONTROLS) {
+  if (_useOrbitControls) {
     controls = new OrbitControls(camera, renderer.domElement);
     // controls.target.set(0, 0, 0);
     controls.enableDamping = true;
@@ -460,14 +559,14 @@ function createPerspectiveCamera() {
     controls.rotateSpeed = 2;
   }
 
-  camera.position.x = defaultCameraCoords.x;
-  camera.position.y = defaultCameraCoords.y;
-  camera.position.z = defaultCameraCoords.z;
+  camera.position.x = _defaultCameraCoords.x;
+  camera.position.y = _defaultCameraCoords.y;
+  camera.position.z = _defaultCameraCoords.z;
 
   camera.rotation.order = "YXZ";
-  camera.rotation.x = defaultCameraRotation.x;
-  camera.rotation.y = defaultCameraRotation.y;
-  camera.rotation.z = defaultCameraRotation.z;
+  camera.rotation.x = _defaultCameraRotation.x;
+  camera.rotation.y = _defaultCameraRotation.y;
+  camera.rotation.z = _defaultCameraRotation.z;
 }
 
 /*
@@ -490,14 +589,44 @@ function createIsometricCamera() {
 }
 */
 
-function main() {
-  playing = true;
+const genRandomNote = () => {
+  const arr = [];
 
+  for (let i = 0; i < 4; i += 1) {
+    arr.push(Math.random() > 0.9 ? 1 : 0);
+  }
+
+  if (
+    !arr.reduce((x, y) => (x || y), 0) || // No notes
+    arr.reduce((sum, val) => (sum + val), 0) > 2 // More than 2 notes
+  ) {
+    return genRandomNote();
+  }
+
+  return arr;
+};
+
+let startTimeStamp;
+
+function main() {
+  startTimeStamp = Date.now();
+  playing = true;
+  setTimeout(() => {
+    document.getElementById("audio").play();
+  }, 2015);
+
+  const totalTime = 22050 * 60;
+  const percent = totalTime / 100;
+  for (let i = 0; i < peaks.length; i += 1) {
+    const percentage = peaks[i].pos / percent;
+    const timeout = (30000 / 100) * percentage;
+    setTimeout(() => startNote(genRandomNote()), timeout);
+  }
 
   const boardGeometry = new THREE.BoxGeometry(
     400,
     30,
-    2000);
+    2400);
   const boardMaterial = new THREE.MeshPhongMaterial({
     color: 0xff0000,
     specular: 0x666666,
@@ -527,7 +656,7 @@ function main() {
   if (_useFog) {
     scene.fog = new THREE.Fog(0x000077, _fogNear, _fogFar);
   }
-  if (useBackground) {
+  if (_useBackground) {
     scene.background = new THREE.Color(0x103b56);
   }
   scene.add(boardMesh);
@@ -537,8 +666,8 @@ function main() {
     light.castShadow = true;
     light.shadow.camera.near = 10;
     light.shadow.camera.far = 5000;
-    light.shadow.mapSize.width  = 512;
-    light.shadow.mapSize.height = 512;
+    light.shadow.mapSize.width  = _shadowMapSize;
+    light.shadow.mapSize.height = _shadowMapSize;
     scene.add(light);
     // scene.add(new THREE.PointLightHelper(light, 3));
     // scene.add(new THREE.CameraHelper(light.shadow.camera));
@@ -561,7 +690,7 @@ function main() {
   const ambLight = new THREE.AmbientLight(0x404040);
   scene.add(ambLight);
 
-  renderer = new THREE.WebGLRenderer({ antialias });
+  renderer = new THREE.WebGLRenderer({ antialias: _antialias });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = _useShadows;
@@ -574,64 +703,76 @@ function main() {
   createPerspectiveCamera();
 }
 
-const genRandomNote = () => {
-  const arr = [];
-
-  for (let i = 0; i < 4; i += 1) {
-    arr.push(Math.random() > 0.75 ? 1 : 0);
+function hasPerfError() {
+  /**
+   * These checks should be checking for potential memory leaks
+   * or other performance killers.
+   *
+   * If any of these checks return a value, kill the application.
+   */
+  if (activeWaveformFrames.length > 300) {
+    return "Active wave forms exceeded 300.";
   }
-
-  if (
-    !arr.reduce((x, y) => (x || y), 0) || // No notes
-    arr.reduce((sum, val) => (sum + val), 0) > 2 // More than 2 notes
-  ) {
-    return genRandomNote();
+  if (activeNotes.length > 60) {
+    return "Active notes exceeded 60";
   }
+  return false;
+}
 
-  return arr;
-};
 
-const cyclesRequired = 30;
-let renderCycles = 0;
+const msPerFrame = 1000 / 60;
+
+let totalFramesElapsed = 0;
 
 function render() {
+  const lastTotalFramesElapsed = totalFramesElapsed;
+
+  const now = Date.now();
+  const msElapsedFromStart = now - startTimeStamp;
+
+  totalFramesElapsed = Math.floor(msElapsedFromStart / msPerFrame);
+
+  const framesElapsed = totalFramesElapsed - lastTotalFramesElapsed;
+
+  const hasErr = hasPerfError();
+  if (hasErr) { throw new Error(hasErr); }
+
   if (playing) {
     requestAnimationFrame(render);
   } else {
     return;
   }
 
-  totalCycles += 1;
+  totalCycles += framesElapsed;
 
   _runExecutionQueue();
 
-  if (renderCycles === cyclesRequired) {
-    startNote(genRandomNote());
-    renderCycles = 0;
-  } else {
-    renderCycles += 1;
+  const waveformOffset = 0;
+  for (let i = 0; i < framesElapsed; i += 1) {
+    if (_useWaveform && waveformData[totalCycles - waveformOffset - i]) {
+      activeWaveformFrames.push(
+        genWaveformFrame(waveformData[totalCycles - waveformOffset - i], i));
+    }
   }
 
   for (let i = 0; i < activeNotes.length; i += 1) {
     const note = activeNotes[i];
-    const percentageComplete = note.getPercentComplete();
-    if (note.isHittable && percentageComplete > 85) {
-      note.setUnhittable(); // The user can't hit the note anymore
-    }
-    if (percentageComplete > 130) {
+    note.update(framesElapsed);
+    if (note.getPercentComplete() > 130) {
       note.remove(i); // Removes it from the scene and activeNotes array
       i -= 1; // The next node will be at the current index.
+    }
+  }
 
-      if (note.isHittable) {
-        note.setUnhittable(); // To make sure it isn't kept in the unhittable array.
+  if (_useWaveform) {
+    for (let i = 0; i < activeWaveformFrames.length; i += 1) {
+      const bar = activeWaveformFrames[i];
+      if (bar.getPercentComplete() > 130) {
+        bar.remove(i);
+        i -= 1;
+      } else {
+        bar.update(framesElapsed);
       }
-
-      if (!activeNotes.length) {
-        return; // No more nodes to loop through
-      }
-    } else {
-      note.addPercentComplete(0.5);
-      note.setNotePosition();
     }
   }
 
@@ -649,10 +790,38 @@ function render() {
 }
 
 function onLoad() {
-  main();
-  startNote(genRandomNote());
-  render();
+  if (_useWaveform) {
+    const hzPerFrame = ((audioData.length - 1) / 30 / 60 / _waveformDataPointsPerFrame);
 
+    /**
+     * Creates a shorter version of the raw audio data that has
+     * just enough datapoints to generate the waveform with.
+     */
+    const data = [];
+    for (let i = 0; i < audioData.length; i += hzPerFrame) {
+      let volume = 0;
+      for (let j = 0; j < hzPerFrame; j += 1) {
+        volume += Math.abs(audioData[Math.floor(i) + j]);
+      }
+      data.push(volume / hzPerFrame);
+      volume = 0;
+    }
+
+    waveformData = [];
+    for (let i = 0; i < data.length; i += _waveformDataPointsPerFrame) {
+      const frame = [];
+      for (let j = 0; j < _waveformDataPointsPerFrame; j += 1) {
+        frame.push(data[Math.floor(i) + j]);
+      }
+      waveformData.push(frame);
+    }
+
+    console.log(audioData.length, waveformData.length, hzPerFrame);
+  }
+
+
+  main();
+  render();
 
   const directionMap = {
     37:                   "LEFT",
@@ -676,6 +845,12 @@ function onLoad() {
   window.addEventListener("keyup", (e) => {
     arrowElMap[directionMap[e.keyCode]].classList.remove("active");
   });
+
+  // Pause and play
+  document.getElementById("stop-render").onclick = () => {
+    playing = !playing;
+    if (playing) { render(); }
+  };
 }
 
 const arrowMaterial = new THREE.MeshStandardMaterial({
@@ -789,7 +964,164 @@ const createTextMeshes = () => new Promise((resolve) => {
   resolve();
 });
 
-loadModels()
-  .then(loadFonts)
-  .then(createTextMeshes)
-  .then(onLoad);
+function getPeaks(data) {
+  const partSize = khzSecond * _noteFrequency;
+  const numParts = data[0].length / partSize;
+
+  peaks = [];
+
+  /**
+   * Each part represents a span of time in the audio.
+   *
+   * We find the peak datapoint in each part and return an array
+   * of the peaks with the volumes and positions.
+   *
+   * A flaw with this method is that two parts next to each other
+   * could peak on the same beat and would be right next to each
+   * other.
+   *
+   * This is circumvented by going through the peaks and removing
+   * peaks that are too close. "Too close" can be defined dynamically
+   * by a ms value.
+   */
+  for (let partIndex = 0; partIndex < numParts; partIndex += 1) {
+    const peak = { vol: 0, pos: null };
+
+    for (let i = partIndex * partSize; i < ((partIndex + 1) * partSize); i += 1) {
+      const vol = (Math.abs(data[0][i]) + Math.abs(data[1][i])) / 2; // Stereo audio
+      if (vol > peak.vol) {
+        peak.pos = i;
+        peak.vol = vol;
+      }
+    }
+
+    peaks.push(peak);
+  }
+
+  const minMs = _minMillisecondBetweenPeaks * ((khzSecond) / 1000);
+
+  /**
+   * Removing peaks that are too close to a certain millisecond value.
+   */
+  for (let i = 0; (i + 1) < peaks.length; i += 1) {
+    if (Math.abs(peaks[i].pos - peaks[i + 1].pos) < minMs) {
+      // Less than x many ms between "peaks", remove the lower one.
+      peaks.splice(i + ((peaks[i].vol > peaks[i + 1].vol) ? 1 : 0), 1);
+      i -= 1; // Whether or not the first or second peak was removed, we reprocess.
+    }
+  }
+
+  /**
+   * Songs will have loud and silent sections. By removing the lowest
+   * x percent of peaks we can make the frequency of notes in the louder
+   * parts of the song higher and decrease the frequency in calmer parts.
+   */
+  peaks = peaks
+    .sort((a, b) => (b.vol - a.vol)) // Sort by volume
+    .splice(0, Math.round(peaks.length * _percentNotesToKeep)) // Only keep a certain percentile
+    .sort((a, b) => (a.pos - b.pos)); // Then sort back to positions
+}
+
+const getSong = query => new Promise((resolve, reject) => {
+  spotify.searchTracks(query, { limit: 1 })
+    .then(((res) => {
+      if (
+        res &&
+        res.body &&
+        res.body.tracks &&
+        res.body.tracks.items &&
+        res.body.tracks.items[0]
+      ) {
+        spotify.getTrack(res.body.tracks.items[0].id).then(({ body }) => {
+          const track = body;
+          const previewUrl = track.preview_url; // The audio we will play
+
+          document.getElementById("audio").src = previewUrl;
+
+          const request = new XMLHttpRequest();
+          request.open("GET", previewUrl, true);
+          request.responseType = "arraybuffer";
+
+          /**
+           * We load and process the audio before we resolve so that there
+           * is no delay when playing/starting the game.
+           */
+          request.onload = () => {
+            // Create offline context
+            const OfflineContext = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+            const offlineContext = new OfflineContext(2, 30 * khzSecond, khzSecond);
+
+            offlineContext.decodeAudioData(request.response, (buffer) => {
+              const source = offlineContext.createBufferSource();
+              source.buffer = buffer;
+
+              /**
+               * Beats/drums/etc apparently typically occur between around
+               * 100 - 150hz so to get a better peak map we can filter out
+               * the other frequencies.
+               *
+               * Adult men also typically have a frequency within 85 - 185hz
+               * so that is ideal for hip-hop/rap
+               *
+               * We do this with a combination of a lowpass and a highpass.
+               *
+               * A better explanation can be found here.
+               * https://www.teachmeaudio.com/mixing/techniques/audio-spectrum/
+               *
+               * "Most bass signals in modern music tracks lie around the 90-200"
+               */
+              const lowpass = offlineContext.createBiquadFilter();
+              lowpass.type = "lowpass";
+              lowpass.frequency.value = 150; // Allows hz lower than
+
+              const highpass = offlineContext.createBiquadFilter();
+              highpass.type = "highpass";
+              highpass.frequency.value = 100; // Allows hz higher than
+
+              /**
+               * The connect function sends the output to a certain
+               * destination.
+               *
+               * So we can make the source feed the data through the lowpass,
+               * which then feeds it to the highpass, which finally feeds it
+               * to the offlineContext that we will actually use.
+               */
+              source.connect(lowpass);
+              lowpass.connect(highpass);
+              highpass.connect(offlineContext.destination);
+
+              source.start(0);
+              offlineContext.startRendering();
+            });
+
+            // After the audio processing is done
+            offlineContext.oncomplete = ({ renderedBuffer }) => {
+              // Two channels because of stereo audio.
+              const channelA = renderedBuffer.getChannelData(0);
+              const channelB = renderedBuffer.getChannelData(1);
+
+              getPeaks([channelA, channelB]);
+              audioData = channelA;
+
+              resolve();
+            };
+          };
+
+          request.send();
+        });
+      } else {
+        reject("COULD_NOT_FIND_SONG");
+      }
+    }))
+    .catch(err => reject(err));
+});
+
+if (accessToken) {
+  loadModels()
+    .then(loadFonts)
+    .then(createTextMeshes)
+    .then(() => getSong("glow"))
+    .then(onLoad);
+} else {
+  // Show the spotify screen
+}

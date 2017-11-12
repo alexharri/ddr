@@ -8,6 +8,7 @@
     "dev": "SET NODE_ENV=development&&webpack-dev-server --inline --hot --progress --watch ./ --content-base ./ --port 8080 --config webpack.config.js"
   },
   "dependencies": {
+    "axios": "^0.17.0",
     "babel-core": "^6.26.0",
     "babel-eslint": "^7.2.3",
     "babel-loader": "^7.1.2",

@@ -84,6 +84,17 @@ function getValueInbetween(x, y, percentage) {
   return ((x / 100) * (100 - percentage)) + ((y / 100) * percentage);
 }
 
+const toHexString = (hexNumber) => {
+  let hex = hexNumber.toString(16);
+  if (typeof hex !== "string") {
+    throw new Error("Expected hex to be a string.");
+  }
+  while (hex.length < 6) {
+    hex = "0" + hex;
+  }
+  return hex;
+};
+
 
 /**
  * === SETTINGS ===
@@ -97,6 +108,26 @@ function getValueInbetween(x, y, percentage) {
 // Common settings
 const _antialias     = false; // It's not possible to change AA live, a reload is required.
 const _useBackground = true;
+
+// Color settings
+const _fogColor         = 0x440033;
+const _backgroundColor  = 0x00ffdd;
+const _boardColor       = 0x006666;
+const _arrowColor       = 0xff0000;
+const _hitTextColor     = 0x3300ee;
+const _missTextColor    = 0x444444;
+const _waveformColor    = 0xdd00dd;
+
+const _rightLightColor  = 0x220044;
+const _leftLightColor   = 0x990099;
+const _textLightColor   = 0xffffff;
+
+const _rightLightIntensity  = 1;
+const _leftLightIntensity   = 2;
+const _textLightIntensity   = 0.5;
+
+const _lightCutoff = 10000;
+
 
 /**
  * Notefrequency determines the frequency of peaks.
@@ -143,8 +174,13 @@ const _shadowReceivers = {};
 
 // Fog settings
 let _useFog   = true;
-let _fogNear  =  900;
-let _fogFar   = 3000;
+const _defaultFogNear =  800;
+const _defaultFogFar  = 2750;
+let _fogNear  = 1;
+let _fogFar   = 0;
+
+
+document.body.style.backgroundColor = `#${toHexString(_backgroundColor)}`;
 
 const calcWobble = (axis, syncOff = 0, forceRate) => {
   const rate = forceRate || _wobbleRate;
@@ -216,6 +252,7 @@ function toggleFog() {
   }
 }
 
+
 function setFogNear(n) {
   if (typeof n !== "number") {
     throw new Error("Expected fogNear to be a number.");
@@ -230,6 +267,48 @@ function setFogFar(n) {
   }
   _fogFar = n;
   scene.fog.far = _fogFar;
+}
+
+/**
+ * The rgb value will not be 0-256 because the fog
+ * uses a span of 0-1.
+ */
+function hexToRGB(hexNumber) {
+  const hex = toHexString(hexNumber);
+
+  const toSpan = i => parseInt(hex.substr(i, 2), 16) / 255;
+  return {
+    r: toSpan(0),
+    g: toSpan(2),
+    b: toSpan(4),
+  };
+}
+
+console.log(hexToRGB(0x0fff00));
+
+function fadeFogTo(near, far, color, numFrames, callback) {
+  const initialNear = _fogNear;
+  const initialFar  = _fogFar;
+
+  const initialColor = {
+    r: scene.fog.color.r,
+    g: scene.fog.color.g,
+    b: scene.fog.color.b,
+  };
+
+  const newColor = hexToRGB(color);
+
+  addToExecutionQueue(numFrames, (percentage) => {
+    setFogNear(getValueInbetween(initialNear, near, percentage));
+    setFogFar(getValueInbetween(initialFar,   far,  percentage));
+
+    const fields = ["r", "g", "b"];
+    for (let i = 0; i < fields.length; i += 1) {
+      scene.fog.color[fields[i]] = getValueInbetween(
+        initialColor[fields[i]],
+        newColor[fields[i]], percentage);
+    }
+  }, callback);
 }
 
 // Demonstration purposes
@@ -509,7 +588,7 @@ function genWaveformFrame(frameVolumeArr, frameOffset = 0) {
   const group = new THREE.Group(); // The note mesh container
 
   const barMaterial = new THREE.MeshPhongMaterial({
-    color: 0xff0000,
+    color: _waveformColor,
     specular: 0x666666,
     shininess: 15,
   });
@@ -630,9 +709,56 @@ let startTimeStamp;
 function main() {
   startTimeStamp = Date.now();
   playing = true;
-  setTimeout(() => {
+
+  scene = new THREE.Scene();
+  if (_useFog) {
+    // We will fade into the fog color on load.
+    scene.fog = new THREE.Fog(_backgroundColor, _fogNear, _fogFar);
+  }
+  if (_useBackground) {
+    scene.background = new THREE.Color(_backgroundColor);
+  }
+
+  fadeFogTo(_defaultFogNear, _defaultFogFar, _fogColor, 181, () => {
     document.getElementById("audio").play();
 
+    setTimeout(() => fadeFogTo(1, 0, _backgroundColor, 181, () => {
+      setWobbleWeight(0);
+
+      const form = genEl("form")
+        .withChildren([
+          genEl("h1", null, "Spotify DDR"),
+          genEl("p", null, "Search for any song from Spotify and start playing!"),
+          genEl("input", null, null, { type: "text", id: "song-input" }),
+          genEl("button", null, "Find song", { type: "submit" }),
+        ]);
+      form.onsubmit = (e) => {
+        e.preventDefault();
+        const song = document.getElementById("song-input").value;
+
+        uiContainer.classList.add("loading");
+        uiContainer.innerHTML = "";
+        uiContainer.withChildren([
+          genEl("div", "loader"),
+          genEl("p", null, null, { id: "loader-status" }),
+        ]);
+
+        getSong(song)
+          .then(() => {
+            setWobbleWeight(1);
+            onLoad();
+          });
+      };
+
+      playing = false;
+      const canvas = document.body.lastChild;
+      canvas.remove();
+      uiContainer.classList.add("active");
+      uiContainer.withChildren(form);
+    }), 1000 * 30);
+  });
+
+    /*
     setTimeout(() => {
       setWobbleWeight(0);
 
@@ -667,7 +793,7 @@ function main() {
       uiContainer.classList.add("active");
       uiContainer.withChildren(form);
     }, 1000 * 32);
-  }, 3015);
+  */
 
   const totalTime = 22050 * 60;
   const percent = totalTime / 100;
@@ -684,7 +810,7 @@ function main() {
     30,
     2400);
   const boardMaterial = new THREE.MeshPhongMaterial({
-    color: 0xff0000,
+    color: _boardColor,
     specular: 0x666666,
     shininess: 15,
   });
@@ -698,8 +824,8 @@ function main() {
     50,
     10);
   const targetMaterial = new THREE.MeshPhongMaterial({
-    color: 0x0000ff,
-    specular: 0x555555,
+    color: 0x000000,
+    specular: 0x000000,
     shininess: 10,
   });
 
@@ -707,14 +833,6 @@ function main() {
   targetMesh.position.y = 100;
   targetMesh.position.z = startPoint + (range * 0.8);
 
-
-  scene = new THREE.Scene();
-  if (_useFog) {
-    scene.fog = new THREE.Fog(0x000077, _fogNear, _fogFar);
-  }
-  if (_useBackground) {
-    scene.background = new THREE.Color(0x103b56);
-  }
   scene.add(boardMesh);
   scene.add(targetMesh);
 
@@ -730,9 +848,24 @@ function main() {
   }
 
   const lights = [
-    { color: 0x0033ff, intensity: 1.5, cutoff: 10000, pos: [500, 3500, 0] },
-    { color: 0x00ff00, intensity: 2.3, cutoff: 10000, pos: [-500, 3500, 0] },
-    { color: 0xffffff, intensity: 0.5, cutoff: 10000, pos: [-800, -500, 1000] },
+    {
+      color:      _rightLightColor,
+      intensity:  _rightLightIntensity,
+      cutoff:     _lightCutoff,
+      pos: [500, 3500, 0],
+    },
+    {
+      color:      _leftLightColor,
+      intensity:  _leftLightIntensity,
+      cutoff:     _lightCutoff,
+      pos: [-500, 3500, 0],
+    },
+    {
+      color:      _textLightColor,
+      intensity:  _textLightIntensity,
+      cutoff:     _lightCutoff,
+      pos: [-800, -500, 1000],
+    },
   ];
 
   for (let i = 0; i < lights.length; i += 1) {
@@ -801,7 +934,9 @@ function render() {
 
   totalCycles += framesElapsed;
 
-  _runExecutionQueue();
+  for (let i = 0; i < framesElapsed; i += 1) {
+    _runExecutionQueue();
+  }
 
   const waveformOffset = 60;
   for (let i = 0; i < framesElapsed; i += 1) {
@@ -924,10 +1059,10 @@ function onLoad() {
   firstLoad = false;
 }
 
-const arrowMaterial = new THREE.MeshStandardMaterial({
-  color: 0x6F6CC5,
-  wireframe: false,
-  metalness: 0.7,
+const arrowMaterial = new THREE.MeshPhongMaterial({
+  color: _arrowColor,
+  specular: 0x444444,
+  shininess: 10,
 });
 
 function loadModels() {
@@ -952,6 +1087,9 @@ function loadModels() {
 
         if (assets[i].material) {
           mesh.material = assets[i].material;
+          for (let j = 0; j < mesh.children.length; j += 1) {
+            mesh.children[j].material = assets[i].material;
+          }
         }
 
         if (assets[i].scale) {
@@ -999,7 +1137,7 @@ const createTextMeshes = () => new Promise((resolve) => {
       name: "miss",
       text: "Miss!",
       material: new THREE.MeshStandardMaterial({
-        color: 0x444444,
+        color: _missTextColor,
         wireframe: false,
         metalness: 0.7,
       }),
@@ -1013,7 +1151,7 @@ const createTextMeshes = () => new Promise((resolve) => {
       name: "hit",
       text: "Great!",
       material: new THREE.MeshStandardMaterial({
-        color: 0xff0000,
+        color: _hitTextColor,
         metalness: 0.8,
       }),
       opts: {

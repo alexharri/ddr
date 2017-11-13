@@ -21,16 +21,6 @@ const spotify = new SpotifyWebApi({
   accessToken,
 });
 
-const button = document.getElementById("spotify-access");
-if (accessToken) {
-  button.parentNode.removeChild(button);
-} else {
-  button.onclick = () => {
-    const authorizeURL = "https://accounts.spotify.com/en/authorize?client_id=b7e6e7cef1c74629ab74d4f89ec088c0&response_type=token&redirect_uri=http:%2F%2Flocalhost:8080&scope=&state=";
-    window.open(authorizeURL);
-  };
-}
-
 /**
  * Globals that will be used at various points of the program.
  */
@@ -41,6 +31,7 @@ let controls;
 let peaks;
 let audioData;
 let waveformData;
+let firstLoad = true;
 let totalCycles = 0;
 
 /**
@@ -104,7 +95,7 @@ function getValueInbetween(x, y, percentage) {
  */
 
 // Common settings
-const _antialias     = true; // It's not possible to change AA live, a reload is required.
+const _antialias     = false; // It's not possible to change AA live, a reload is required.
 const _useBackground = true;
 
 /**
@@ -116,10 +107,10 @@ const _useBackground = true;
  * 0.25 = 4 peaks per second.
  */
 const _noteFrequency = 0.25;
-const _percentNotesToKeep = 0.75;
+const _percentNotesToKeep = 0.85;
 
 // Note settings
-const _minMillisecondBetweenPeaks = 150; // No two notes may be closer than this.
+const _minMillisecondBetweenPeaks = 175; // No two notes may be closer than this.
 
 // Camera settings
 const _useOrbitControls = false; // Orbit helper
@@ -136,8 +127,8 @@ const _defaultCameraRotation = Object.freeze({
 
 // Waveform settings
 const _useWaveform = true;
-const _waveformDataPointsPerFrame = 2;
-const _waveformSpeed = 2;
+const _waveformDataPointsPerFrame = 1;
+const _waveformSpeed = 1.25;
 
 // Wobble settings
 let _useWobble        = true && !_useOrbitControls; // Wobble messes with orbit
@@ -146,7 +137,7 @@ let _wobbleWeight     = 1;
 let _globalWobbleSync = 0;
 
 // Shadow setttings
-let   _useShadows = true;
+let   _useShadows = false;
 const _shadowMapSize = 512;
 const _shadowReceivers = {};
 
@@ -281,23 +272,6 @@ const directions = ["LEFT", "UP", "DOWN", "RIGHT"];
 // This contains the elements that represent the arrow keys in the UI.
 const arrowElMap = {};
 
-{
-  // Initializing the arrows
-  const arrowContainer = document.getElementById("arrow-container");
-
-  const genArrowId = direction => `arrow-${direction.toLowerCase()}`;
-
-  for (let i = 0; i < directions.length; i += 1) {
-    const direction = directions[i];
-    const el = document.createElement("div");
-    el.classList.add("arrow");
-    el.classList.add(genArrowId(direction));
-    el.id = genArrowId(direction);
-    arrowElMap[direction] = el;
-    arrowContainer.appendChild(el);
-  }
-}
-
 const scoreContainer = document.getElementById("score-container");
 
 let score = 0;
@@ -309,6 +283,55 @@ function addScore(s) {
   }
   score += (s * scoreMultiplier);
   return score;
+}
+
+function setWithChildren(el) {
+  el.withChildren = function withChildren(children) {
+    el.innerHTML = "";
+
+    if (children && children.nodeType === Node.ELEMENT_NODE) {
+      el.appendChild(children);
+    } else if (Array.isArray(children)) {
+      for (let i = 0; i < children.length; i += 1) {
+        const child = children[i];
+        if (!(child && child.nodeType === Node.ELEMENT_NODE)) {
+          throw new Error("Expected children to be an array of valid child nodes.");
+        }
+        el.appendChild(child);
+      }
+    }
+    return el;
+  };
+  return el;
+}
+
+const uiContainer = setWithChildren(document.getElementById("ui-container"));
+
+function genEl(type, c, text, attrs) {
+  const el = document.createElement(type);
+
+  if (typeof c === "string") {
+    el.classList.add(c);
+  } else if (Array.isArray(c)) {
+    for (let i = 0; i < c.length; i += 1) {
+      el.classList.add(c[i]);
+    }
+  }
+
+  if (typeof text === "string") {
+    el.appendChild(document.createTextNode(text));
+  }
+
+  if (attrs && typeof attrs === "object") {
+    const keys = Object.keys(attrs);
+    for (let i = 0; i < keys.length; i += 1) {
+      el[keys[i]] = attrs[keys[i]];
+    }
+  }
+
+  setWithChildren(el);
+
+  return el;
 }
 
 /*
@@ -485,10 +508,6 @@ function startNote(noteArr) {
 function genWaveformFrame(frameVolumeArr, frameOffset = 0) {
   const group = new THREE.Group(); // The note mesh container
 
-  if (frameOffset > 0) {
-    console.log(frameOffset);
-  }
-
   const barMaterial = new THREE.MeshPhongMaterial({
     color: 0xff0000,
     specular: 0x666666,
@@ -613,15 +632,52 @@ function main() {
   playing = true;
   setTimeout(() => {
     document.getElementById("audio").play();
-  }, 2015);
+
+    setTimeout(() => {
+      setWobbleWeight(0);
+
+      const form = genEl("form")
+        .withChildren([
+          genEl("h1", null, "Spotify DDR"),
+          genEl("p", null, "Search for any song from Spotify and start playing!"),
+          genEl("input", null, null, { type: "text", id: "song-input" }),
+          genEl("button", null, "Find song", { type: "submit" }),
+        ]);
+      form.onsubmit = (e) => {
+        e.preventDefault();
+        const song = document.getElementById("song-input").value;
+
+        uiContainer.classList.add("loading");
+        uiContainer.innerHTML = "";
+        uiContainer.withChildren([
+          genEl("div", "loader"),
+          genEl("p", null, null, { id: "loader-status" }),
+        ]);
+
+        getSong(song)
+          .then(() => {
+            setWobbleWeight(1);
+            onLoad();
+          });
+      };
+
+      playing = false;
+      const canvas = document.body.lastChild;
+      canvas.remove();
+      uiContainer.classList.add("active");
+      uiContainer.withChildren(form);
+    }, 1000 * 32);
+  }, 3015);
 
   const totalTime = 22050 * 60;
   const percent = totalTime / 100;
-  for (let i = 0; i < peaks.length; i += 1) {
-    const percentage = peaks[i].pos / percent;
-    const timeout = (30000 / 100) * percentage;
-    setTimeout(() => startNote(genRandomNote()), timeout);
-  }
+  setTimeout(() => {
+    for (let i = 0; i < peaks.length; i += 1) {
+      const percentage = peaks[i].pos / percent;
+      const timeout = (30000 / 100) * percentage;
+      setTimeout(() => startNote(genRandomNote()), timeout);
+    }
+  }, 1000);
 
   const boardGeometry = new THREE.BoxGeometry(
     400,
@@ -747,7 +803,7 @@ function render() {
 
   _runExecutionQueue();
 
-  const waveformOffset = 0;
+  const waveformOffset = 60;
   for (let i = 0; i < framesElapsed; i += 1) {
     if (_useWaveform && waveformData[totalCycles - waveformOffset - i]) {
       activeWaveformFrames.push(
@@ -790,6 +846,8 @@ function render() {
 }
 
 function onLoad() {
+  uiContainer.classList.remove("active");
+
   if (_useWaveform) {
     const hzPerFrame = ((audioData.length - 1) / 30 / 60 / _waveformDataPointsPerFrame);
 
@@ -815,8 +873,23 @@ function onLoad() {
       }
       waveformData.push(frame);
     }
+  }
 
-    console.log(audioData.length, waveformData.length, hzPerFrame);
+  // Initializing the arrows
+  if (firstLoad) {
+    const arrowContainer = document.getElementById("arrow-container");
+
+    const genArrowId = direction => `arrow-${direction.toLowerCase()}`;
+
+    for (let i = 0; i < directions.length; i += 1) {
+      const direction = directions[i];
+      const el = document.createElement("div");
+      el.classList.add("arrow");
+      el.classList.add(genArrowId(direction));
+      el.id = genArrowId(direction);
+      arrowElMap[direction] = el;
+      arrowContainer.appendChild(el);
+    }
   }
 
 
@@ -834,23 +907,21 @@ function onLoad() {
     ["L".charCodeAt(0)]:  "RIGHT",
   };
 
-  window.addEventListener("keydown", (e) => {
-    arrowElMap[directionMap[e.keyCode]].classList.add("active");
-    const dir = directionMap[e.keyCode];
-    if (hittableNotes.length) {
-      hittableNotes[0].hitNote(dir);
-    }
-  });
+  if (firstLoad) {
+    window.addEventListener("keydown", (e) => {
+      arrowElMap[directionMap[e.keyCode]].classList.add("active");
+      const dir = directionMap[e.keyCode];
+      if (hittableNotes.length) {
+        hittableNotes[0].hitNote(dir);
+      }
+    });
 
-  window.addEventListener("keyup", (e) => {
-    arrowElMap[directionMap[e.keyCode]].classList.remove("active");
-  });
+    window.addEventListener("keyup", (e) => {
+      arrowElMap[directionMap[e.keyCode]].classList.remove("active");
+    });
+  }
 
-  // Pause and play
-  document.getElementById("stop-render").onclick = () => {
-    playing = !playing;
-    if (playing) { render(); }
-  };
+  firstLoad = false;
 }
 
 const arrowMaterial = new THREE.MeshStandardMaterial({
@@ -869,6 +940,7 @@ function loadModels() {
     },
   ];
 
+  document.getElementById("loader-status").innerHTML = "Loading models...";
   return new Promise(resolve => (function loadNext(i = 0) {
     if (assets[i]) {
       objLoader.load(assets[i].path, (mesh) => {
@@ -907,6 +979,8 @@ function loadFonts() {
       name: "shrikhand",
     },
   ];
+
+  document.getElementById("loader-status").innerHTML = "Loading fonts...";
   return new Promise(resolve => (function loadNext(i = 0) {
     if (assets[i]) {
       FontLoader.load(assets[i].path, (font) => {
@@ -931,8 +1005,8 @@ const createTextMeshes = () => new Promise((resolve) => {
       }),
       opts: {
         font: fonts.shrikhand,
+        height: 0,
         size: 50,
-        height: 5,
       },
     },
     {
@@ -944,16 +1018,18 @@ const createTextMeshes = () => new Promise((resolve) => {
       }),
       opts: {
         font: fonts.shrikhand,
+        height: 0,
         size: 50,
-        height: 5,
       },
     },
   ];
 
+  document.getElementById("loader-status").innerHTML = "Creating text meshes...";
   for (let i = 0; i < textStyles.length; i += 1) {
     const { name, text, material, opts } = textStyles[i];
 
     const textGeometry = new THREE.TextGeometry(text, opts);
+    // const textGeo = new THREE.ShapeGeometry(text, opts);
 
     const textMesh = new THREE.Mesh(textGeometry, material);
     texts[name] = textMesh;
@@ -1023,6 +1099,7 @@ function getPeaks(data) {
 }
 
 const getSong = query => new Promise((resolve, reject) => {
+  document.getElementById("loader-status").innerHTML = "Loading song...";
   spotify.searchTracks(query, { limit: 1 })
     .then(((res) => {
       if (
@@ -1110,6 +1187,7 @@ const getSong = query => new Promise((resolve, reject) => {
           request.send();
         });
       } else {
+        document.getElementById("loader-status").innerHTML = "Could not find song.";
         reject("COULD_NOT_FIND_SONG");
       }
     }))
@@ -1117,11 +1195,47 @@ const getSong = query => new Promise((resolve, reject) => {
 });
 
 if (accessToken) {
-  loadModels()
-    .then(loadFonts)
-    .then(createTextMeshes)
-    .then(() => getSong("glow"))
-    .then(onLoad);
+  // Render the screen for the user to pick the song.
+  uiContainer.innerHTML = "";
+  setTimeout(() => uiContainer.classList.add("active"));
+
+  const form = genEl("form")
+    .withChildren([
+      genEl("h1", null, "Spotify DDR"),
+      genEl("p", null, "Search for any song from Spotify and start playing!"),
+      genEl("input", null, null, { type: "text", id: "song-input" }),
+      genEl("button", null, "Find song", { type: "submit" }),
+    ]);
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const song = document.getElementById("song-input").value;
+
+    uiContainer.classList.add("loading");
+    uiContainer.innerHTML = "";
+    uiContainer.withChildren([
+      genEl("div", "loader"),
+      genEl("p", null, null, { id: "loader-status" }),
+    ]);
+
+    getSong(song)
+      .then(loadModels)
+      .then(loadFonts)
+      .then(createTextMeshes)
+      .then(onLoad);
+  };
+
+  uiContainer.appendChild(form);
 } else {
   // Show the spotify screen
+  setTimeout(() => uiContainer.classList.add("active"));
+
+  const button = genEl("button", null, "Get access token");
+  button.onclick = () => window.location.href = "https://accounts.spotify.com/en/authorize?client_id=b7e6e7cef1c74629ab74d4f89ec088c0&response_type=token&redirect_uri=http:%2F%2Flocalhost:8080&scope=&state="; // eslint-disable-line no-return-assign
+
+  uiContainer.withChildren([
+    genEl("h1", null, "Spotify DDR"),
+    genEl("p", null, "This game requires access to spotify."),
+    genEl("p", null, "Click the button below to get an access token."),
+    button,
+  ]);
 }

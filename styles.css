@@ -4,11 +4,29 @@
   box-sizing: border-box;
 }
 
-body {
-  overflow: hidden;
+html {
+  font-family: sans-serif;
+  font-size: 16px;
 }
 
-button {
+body {
+  overflow: hidden;
+  position: relative;
+  min-height: 100vh;
+  background: #103b56;
+}
+
+h1 {
+  font-size: 2rem;
+  font-weight: bolder;
+  margin-bottom: 1rem;
+}
+
+p {
+  margin-bottom: 1rem;
+}
+
+#stop-render {
   position: fixed;
   top: 0;
   left: 0;
@@ -18,14 +36,16 @@ button {
   position: fixed;
   color: white;
   left: 100px;
-  top: 0;
+  top: 40px;
+  font-weight: bolder;
+  font-size: 2rem;
 }
 
 .arrow-container {
   height: 90px;
   width: 240px;
   position: fixed;
-  top: 40px;
+  bottom: 40px;
   left: 40px;
 }
 
@@ -65,4 +85,38 @@ button {
 
 .arrow-up.active {
   top: 6px;
+}
+
+.ui-container {
+  display: block;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  opacity: 0;
+  transform: translate(-50%, -40%);
+  min-width: 400px;
+  min-height: 200px;
+  background: white;
+  padding: 20px;
+
+  transition: all .3s;
+}
+
+.ui-container.active {
+  opacity: 1;
+  transform: translate(-50%, -50%);
+}
+
+.ui-container.loading {
+  min-height: 300px;
+}
+
+.loader {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0,0,0,.3);
+  width: 40px;
+  height: 40px;
 }

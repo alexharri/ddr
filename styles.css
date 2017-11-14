@@ -13,7 +13,6 @@ body {
   overflow: hidden;
   position: relative;
   min-height: 100vh;
-  background: #103b56;
 }
 
 h1 {
@@ -28,8 +27,63 @@ h2 {
   margin-bottom: 1rem;
 }
 
+h3 {
+  font-size: 1.25rem;
+  font-weight: bolder;
+  margin-bottom: 1rem;
+}
+
 p {
   margin-bottom: 1rem;
+}
+
+label {
+  margin-bottom: 10px;
+}
+
+label div {
+  margin-bottom: 6px;
+}
+
+input,
+label input {
+  border: 1px solid rgba(0,0,0,.6);
+  font-size: 1.25rem;
+  outline: none;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+input,
+label input:focus {
+  border-color: rgb(4, 103, 251);
+}
+
+input[type="color"] {
+  padding: 0;
+  border: 0;
+}
+
+#song-input {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 1.25em;
+  margin-bottom: 10px;
+}
+
+.start-song-button,
+.toggle-settings-button {
+  background: rgb(4, 103, 251);
+  font-size: 1.25rem;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  margin-bottom: 20px;
+  width: 100%;
+  display: inline-block;
+  max-width: calc(50% - 10px);
 }
 
 #stop-render {
@@ -45,6 +99,8 @@ p {
   top: 40px;
   font-weight: bolder;
   font-size: 2rem;
+  opacity: 1;
+  transition: opacity 2s;
 }
 
 .arrow-container {
@@ -53,6 +109,13 @@ p {
   position: fixed;
   bottom: 40px;
   left: 40px;
+  opacity: 1;
+  transition: opacity 2s;
+}
+
+.score-container.hidden,
+.arrow-container.hidden {
+  opacity: 0;
 }
 
 .arrow {
@@ -113,10 +176,6 @@ p {
   transform: translate(-50%, -50%);
 }
 
-.ui-container.loading {
-  min-height: 300px;
-}
-
 .loader {
   position: absolute;
   top: 50%;
@@ -127,16 +186,101 @@ p {
   height: 40px;
 }
 
+.settings-section-container {
+  position: relative;
+}
+
 .settings-container {
   margin-top: 20px;
-  overflow-y: scroll;
+  overflow-y: auto;
   max-height: 300px;
+}
+
+.settings-title {
+}
+
+.settings-section-title {
+  padding-top: 10px;
+  border-top: 1px solid rgba(0,0,0,.3);
+  margin-right: 20px;
+}
+
+.setting-expand-button {
+  position: absolute;
+  top: 10px;
+  right: 20px;
+  height: 20px;
+  width: 20px;
+  background-image: url("images/arrow-point-to-right.svg");
+  background-position: 50%;
+  background-size: contain;
+  background-color: transparent;
+  border: none;
+  transform: rotate(90deg);
+}
+
+.setting-expand-button.active {
+  transform: rotate(-90deg);
+}
+
+.settings-container {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
 }
 
 .color-setting-label {
-  width: 25%;
+  width: 120px;
   margin-bottom: 10px;
+}
+
+.checkbox-label {
+  width
+}
+
+.number-label {
+  width: 100%;
+}
+
+.number-label input {
+  width: 200px;
+  max-width: 100%;
+}
+
+.expander {
+  overflow: hidden;
+  max-height: 0;
+}
+
+.expander.expanded {
+  max-height: 1000px;
+  padding-bottom: 20px;
+}
+
+.toggle-settings-button {
+  background: transparent;
+  border: 1px solid rgba(0,0,0,.25);
+  color: rgba(0,0,0,.7);
+  margin-left: 20px;
+}
+
+#settings-container {
+  overflow: hidden;
+  max-height: 0;
+}
+
+#settings-container.expanded {
+  max-height: 4000px;
+}
+
+.difficulty-button {
+  margin-right: 10px;
+  padding: 4px 8px;
+  border: 1px solid rgba(0,0,0,.5);
+  background: transparent;
+}
+
+.difficulty-button.active {
+  background: rgb(4, 103, 251);
+  color: white;
+  border: none;
 }

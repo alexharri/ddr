@@ -109,17 +109,18 @@ const bools = {};
 const nums = {};
 
 // Common settings
-bools._antialias     = false; // It's not possible to change AA live, a reload is required.
+bools._antialias     = true; // It's not possible to change AA live, a reload is required.
 const _useBackground = true;
 
 // Color settings
 const colors = {
   _fogColor         : 0x440033,
-  _backgroundColor  : 0x00ffdd,
+  _backgroundColor  : 0x01d1fe,
   _boardColor       : 0x006666,
   _arrowColor       : 0xff0000,
   _hitTextColor     : 0x3300ee,
   _missTextColor    : 0x444444,
+  _targetColor      : 0x111111,
   _waveformColor    : 0xdd00dd,
   _rightLightColor  : 0x220044,
   _leftLightColor   : 0x990099,
@@ -141,8 +142,8 @@ const _lightCutoff = 10000;
  * 0.5  = 2 peaks per second.
  * 0.25 = 4 peaks per second.
  */
-nums._noteFrequency = 0.25;
-nums._percentNotesToKeep = 0.85;
+nums._noteFrequency = 0.3;
+nums._percentNotesToKeep = 0.8;
 
 // Note settings
 nums._minMillisecondBetweenPeaks = 175; // No two notes may be closer than this.
@@ -173,7 +174,7 @@ let _globalWobbleSync = 0;
 
 // Shadow setttings
 bools._useShadows = false;
-const _shadowMapSize = 512;
+nums._shadowMapSize = 512;
 const _shadowReceivers = {};
 
 // Fog settings
@@ -183,6 +184,33 @@ const _defaultFogFar  = 2750;
 let _fogNear  = 1;
 let _fogFar   = 0;
 
+
+function genEl(type, c, text, attrs) {
+  const el = document.createElement(type);
+
+  if (typeof c === "string") {
+    el.classList.add(c);
+  } else if (Array.isArray(c)) {
+    for (let i = 0; i < c.length; i += 1) {
+      el.classList.add(c[i]);
+    }
+  }
+
+  if (typeof text === "string") {
+    el.appendChild(document.createTextNode(text));
+  }
+
+  if (attrs && typeof attrs === "object") {
+    const keys = Object.keys(attrs);
+    for (let i = 0; i < keys.length; i += 1) {
+      el[keys[i]] = attrs[keys[i]];
+    }
+  }
+
+  setWithChildren(el);
+
+  return el;
+}
 
 function genColorChanger(label, key) {
   const input = genEl("input", null, null, {
@@ -210,7 +238,7 @@ function genBoolChanger(label, key) {
     console.log(e.target.checked);
   };
 
-  return genEl("label")
+  return genEl("label", "checkbox-label")
     .withChildren([
       genEl("div", null, label),
       input,
@@ -218,34 +246,132 @@ function genBoolChanger(label, key) {
 }
 
 function genNumChanger(label, key) {
-  const input = genEl("input", null, null, { type: "number", value: nums[key] });
-  input.onchange = e => nums[key] = Number(e.target.value);
+  const input = genEl("input", null, null, { type: "number", value: nums[key], step: "0.1" });
+  input.onchange = e => nums[key] = Number(e.target.value); // eslint-disable-line no-return-assign
 
-  return genEl("label")
+  return genEl("label", "number-label")
     .withChildren([
       genEl("div", null, label),
       input,
     ]);
 }
 
+function genDifficultyNode() {
+  const difficultySettings = [
+    { label: "Easy",    freq: 0.4, keep: 0.75 },
+    { label: "Medium",  freq: 0.3, keep: 0.80 },
+    { label: "Hard",    freq: 0.2, keep: 0.85 },
+  ];
+
+  const buttonArr = [];
+
+  for (let i = 0; i < difficultySettings.length; i += 1) {
+    const button = genEl("button", "difficulty-button", difficultySettings[i].label, { type: "button" });
+    if (difficultySettings[i].freq === nums._noteFrequency) {
+      button.classList.add("active");
+    }
+    button.onclick = () => {
+      nums._noteFrequency = difficultySettings[i].freq;
+      nums._percentNotesToKeep = difficultySettings[i].keep;
+
+      for (let j = 0; j < buttonArr.length; j += 1) {
+        buttonArr[j].classList.remove("active");
+      }
+
+      button.classList.add("active");
+      console.log(nums);
+    };
+
+    buttonArr.push(button);
+  }
+
+  return genEl("div")
+    .withChildren(buttonArr);
+}
+
+function genSettingsSectionContainer(type, c, title) {
+  const el = genEl(type, c);
+  const { withChildren } = el;
+
+  const expander = genEl("div", ["expander", "settings-container"]);
+
+  const expandButton = genEl("button", "setting-expand-button", null, { type: "button" });
+  expandButton.onclick = () => {
+    if (expander.classList.contains("expanded")) {
+      expander.classList.remove("expanded");
+      expandButton.classList.remove("active");
+    } else {
+      expander.classList.add("expanded");
+      expandButton.classList.add("active");
+    }
+  };
+
+  el.withChildren = (children) => withChildren([
+    genEl("h3", "settings-section-title", title),
+    expandButton,
+    expander.withChildren(children),
+  ]);
+
+  return el;
+}
+
 function genSettingsNode() {
-  return genEl("div", "settings-container")
+  return genEl("div", null, null, { id: "settings-container" })
     .withChildren([
-      genColorChanger("Fog", "_fogColor"),
-      genColorChanger("Background", "_backgroundColor"),
-      genColorChanger("Board", "_boardColor"),
-      genColorChanger("Arrow", "_arrowColor"),
-      genColorChanger("Hit text", "_hitTextColor"),
-      genColorChanger("Miss text", "_missTextColor"),
-      genColorChanger("Waveform", "_waveformColor"),
-      genColorChanger("Right light", "_rightLightColor"),
-      genColorChanger("Left light", "_leftLightColor"),
-      genColorChanger("Text light", "_textLightColor"),
-      genBoolChanger("Shadows", "_useShadows"),
-      genBoolChanger("Use wobble", "_useWobble"),
-      genBoolChanger("Use waveform", "_useWaveform"),
-      genNumChanger("Waveform speed", "_waveformSpeed"),
+      genEl("h2", "settings-title", "Settings"),
+      genSettingsSectionContainer("div", "settings-section-container", "Difficulty")
+        .withChildren([
+          genDifficultyNode(),
+        ]),
+      genSettingsSectionContainer("div", "settings-section-container", "Color")
+        .withChildren([
+          genColorChanger("Fog", "_fogColor"),
+          genColorChanger("Background", "_backgroundColor"),
+          genColorChanger("Board", "_boardColor"),
+          genColorChanger("Arrow", "_arrowColor"),
+          genColorChanger("Target", "_targetColor"),
+          genColorChanger("Hit text", "_hitTextColor"),
+          genColorChanger("Miss text", "_missTextColor"),
+          genColorChanger("Waveform", "_waveformColor"),
+          genColorChanger("Right light", "_rightLightColor"),
+          genColorChanger("Left light", "_leftLightColor"),
+          genColorChanger("Text light", "_textLightColor"),
+        ]),
+      genSettingsSectionContainer("div", "settings-section-container", "Wobble")
+        .withChildren([
+          genBoolChanger("Use wobble", "_useWobble"),
+          genNumChanger("Wobble weight", "_wobbleWeight"),
+          genNumChanger("Wobble rate", "_wobbleRate"),
+        ]),
+      genSettingsSectionContainer("div", "settings-section-container", "Shadow")
+        .withChildren([
+          genBoolChanger("Use shadows", "_useShadows"),
+          genNumChanger("Shadow quality", "_shadowMapSize"),
+        ]),
+      genSettingsSectionContainer("div", "settings-section-container", "Waveform")
+        .withChildren([
+          genBoolChanger("Use waveform", "_useWaveform"),
+          genNumChanger("Waveform speed", "_waveformSpeed"),
+          genNumChanger("Waveform detail", "_waveformDataPointsPerFrame"),
+        ]),
     ]);
+}
+
+function genSettingsToggleButton() {
+  const button = genEl("button", "toggle-settings-button", "Open settings", { type: "button" });
+  button.onclick = () => {
+    const el = document.getElementById("settings-container");
+    if (el.classList.contains("expanded")) {
+      el.classList.remove("expanded");
+      button.classList.remove("active");
+      button.innerHTML = "Open settings";
+    } else {
+      el.classList.add("expanded");
+      button.classList.add("active");
+      button.innerHTML = "Close settings";
+    }
+  };
+  return button;
 }
 
 document.body.style.backgroundColor = `#${toHexString(colors._backgroundColor)}`;
@@ -421,6 +547,7 @@ const directions = ["LEFT", "UP", "DOWN", "RIGHT"];
 // This contains the elements that represent the arrow keys in the UI.
 const arrowElMap = {};
 
+const arrowContainer = document.getElementById("arrow-container");
 const scoreContainer = document.getElementById("score-container");
 
 let score = 0;
@@ -455,33 +582,6 @@ function setWithChildren(el) {
 }
 
 const uiContainer = setWithChildren(document.getElementById("ui-container"));
-
-function genEl(type, c, text, attrs) {
-  const el = document.createElement(type);
-
-  if (typeof c === "string") {
-    el.classList.add(c);
-  } else if (Array.isArray(c)) {
-    for (let i = 0; i < c.length; i += 1) {
-      el.classList.add(c[i]);
-    }
-  }
-
-  if (typeof text === "string") {
-    el.appendChild(document.createTextNode(text));
-  }
-
-  if (attrs && typeof attrs === "object") {
-    const keys = Object.keys(attrs);
-    for (let i = 0; i < keys.length; i += 1) {
-      el[keys[i]] = attrs[keys[i]];
-    }
-  }
-
-  setWithChildren(el);
-
-  return el;
-}
 
 /*
 function getScore() {
@@ -792,63 +892,70 @@ function main() {
     scene.background = new THREE.Color(colors._backgroundColor);
   }
 
+  score = 0;
+  arrowContainer.classList.remove("hidden");
+  scoreContainer.classList.remove("hidden");
   fadeFogTo(_defaultFogNear, _defaultFogFar, colors._fogColor, 181, () => {
     document.getElementById("audio").play();
 
-    setTimeout(() => fadeFogTo(1, 0, colors._backgroundColor, 181, () => {
-      setWobbleWeight(0);
+    setTimeout(() => {
+      arrowContainer.classList.add("hidden");
+      scoreContainer.classList.add("hidden");
+      fadeFogTo(1, 0, colors._backgroundColor, 181, () => {
+        setWobbleWeight(0);
 
-      const totalNoteCount = hitNoteCount + missedNoteCount;
-      let hitPercent = ((hitNoteCount / totalNoteCount) * 100).toString();
+        const totalNoteCount = hitNoteCount + missedNoteCount;
+        let hitPercent = ((hitNoteCount / totalNoteCount) * 100).toString();
 
-      if (hitPercent.length > 5) {
-        hitPercent = hitPercent.substr(0, 5);
-      }
+        if (hitPercent.length > 5) {
+          hitPercent = hitPercent.substr(0, 5);
+        }
 
-      let message;
+        let message;
 
-      if (Number(hitPercent) > 80) {
-        message = "Great job!";
-      } else if (Number(hitPercent) > 60) {
-        message = "Pretty good!";
-      } else if (Number(hitPercent) > 40) {
-        message = "Not too bad.";
-      } else {
-        message = "Please stop.";
-      }
+        if (Number(hitPercent) > 80) {
+          message = "Great job!";
+        } else if (Number(hitPercent) > 60) {
+          message = "Pretty good!";
+        } else if (Number(hitPercent) > 40) {
+          message = "Not too bad.";
+        } else {
+          message = "Please stop.";
+        }
 
-      const form = genEl("form")
-        .withChildren([
-          genEl("h2", null, `You hit ${hitPercent}% of the notes! ${message}`),
-          genEl("p", null, "How about playing again?"),
-          genEl("input", null, null, { type: "text", id: "song-input" }),
-          genEl("button", null, "Find song", { type: "submit" }),
-          genSettingsNode(),
-        ]);
-      form.onsubmit = (e) => {
-        e.preventDefault();
-        const song = document.getElementById("song-input").value;
+        const form = genEl("form")
+          .withChildren([
+            genEl("h2", null, `You hit ${hitPercent}% of the notes! ${message}`),
+            genEl("p", null, "How about playing again?"),
+            genEl("input", null, null, { type: "text", id: "song-input" }),
+            genEl("button", "start-song-button", "Find song", { type: "submit" }),
+            genSettingsToggleButton(),
+            genSettingsNode(),
+          ]);
+        form.onsubmit = (e) => {
+          e.preventDefault();
+          const song = document.getElementById("song-input").value;
 
-        uiContainer.classList.add("loading");
-        uiContainer.innerHTML = "";
-        uiContainer.withChildren([
-          genEl("div", "loader"),
-          genEl("p", null, null, { id: "loader-status" }),
-        ]);
+          uiContainer.innerHTML = "";
+          uiContainer.withChildren([
+            genEl("div", "loader"),
+            genEl("p", null, null, { id: "loader-status" }),
+          ]);
 
-        getSong(song) // eslint-disable-line no-use-before-define
-          .then(() => {
-            setWobbleWeight(1);
-            onLoad(); // eslint-disable-line no-use-before-define
-          });
-      };
+          getSong(song) // eslint-disable-line no-use-before-define
+            .then(() => {
+              setWobbleWeight(1);
+              onLoad(); // eslint-disable-line no-use-before-define
+            });
+        };
 
-      playing = false;
-      const canvas = document.body.lastChild;
-      canvas.remove();
-      uiContainer.classList.add("active");
-      uiContainer.withChildren(form);
-    }), 1000 * 30);
+        playing = false;
+        const canvas = document.body.lastChild;
+        canvas.remove();
+        uiContainer.classList.add("active");
+        uiContainer.withChildren(form);
+      });
+    }, 1000 * 30);
   });
 
   const totalTime = 22050 * 60;
@@ -880,8 +987,8 @@ function main() {
     50,
     10);
   const targetMaterial = new THREE.MeshPhongMaterial({
-    color: 0x000000,
-    specular: 0x000000,
+    color: colors._targetColor,
+    specular: 0x555555,
     shininess: 10,
   });
 
@@ -896,8 +1003,8 @@ function main() {
     light.castShadow = true;
     light.shadow.camera.near = 10;
     light.shadow.camera.far = 5000;
-    light.shadow.mapSize.width  = _shadowMapSize;
-    light.shadow.mapSize.height = _shadowMapSize;
+    light.shadow.mapSize.width  = nums._shadowMapSize;
+    light.shadow.mapSize.height = nums._shadowMapSize;
     scene.add(light);
     // scene.add(new THREE.PointLightHelper(light, 3));
     // scene.add(new THREE.CameraHelper(light.shadow.camera));
@@ -1068,8 +1175,6 @@ function onLoad() {
 
   // Initializing the arrows
   if (firstLoad) {
-    const arrowContainer = document.getElementById("arrow-container");
-
     const genArrowId = direction => `arrow-${direction.toLowerCase()}`;
 
     for (let i = 0; i < directions.length; i += 1) {
@@ -1100,6 +1205,9 @@ function onLoad() {
 
   if (firstLoad) {
     window.addEventListener("keydown", (e) => {
+      if (!directionMap[e.keyCode]) {
+        return;
+      }
       arrowElMap[directionMap[e.keyCode]].classList.add("active");
       const dir = directionMap[e.keyCode];
       if (hittableNotes.length) {
@@ -1108,6 +1216,9 @@ function onLoad() {
     });
 
     window.addEventListener("keyup", (e) => {
+      if (!directionMap[e.keyCode]) {
+        return;
+      }
       arrowElMap[directionMap[e.keyCode]].classList.remove("active");
     });
   }
@@ -1398,7 +1509,8 @@ if (accessToken) {
       genEl("h1", null, "Spotify DDR"),
       genEl("p", null, "Search for any song from Spotify and start playing!"),
       genEl("input", null, null, { type: "text", id: "song-input" }),
-      genEl("button", null, "Find song", { type: "submit" }),
+      genEl("button", "start-song-button", "Find song", { type: "submit" }),
+      genSettingsToggleButton(),
       genSettingsNode(),
     ]);
 

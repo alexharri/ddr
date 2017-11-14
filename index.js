@@ -105,22 +105,26 @@ const toHexString = (hexNumber) => {
  * If a property
  */
 
+const bools = {};
+const nums = {};
+
 // Common settings
-const _antialias     = false; // It's not possible to change AA live, a reload is required.
+bools._antialias     = false; // It's not possible to change AA live, a reload is required.
 const _useBackground = true;
 
 // Color settings
-const _fogColor         = 0x440033;
-const _backgroundColor  = 0x00ffdd;
-const _boardColor       = 0x006666;
-const _arrowColor       = 0xff0000;
-const _hitTextColor     = 0x3300ee;
-const _missTextColor    = 0x444444;
-const _waveformColor    = 0xdd00dd;
-
-const _rightLightColor  = 0x220044;
-const _leftLightColor   = 0x990099;
-const _textLightColor   = 0xffffff;
+const colors = {
+  _fogColor         : 0x440033,
+  _backgroundColor  : 0x00ffdd,
+  _boardColor       : 0x006666,
+  _arrowColor       : 0xff0000,
+  _hitTextColor     : 0x3300ee,
+  _missTextColor    : 0x444444,
+  _waveformColor    : 0xdd00dd,
+  _rightLightColor  : 0x220044,
+  _leftLightColor   : 0x990099,
+  _textLightColor   : 0xffffff,
+};
 
 const _rightLightIntensity  = 1;
 const _leftLightIntensity   = 2;
@@ -137,11 +141,11 @@ const _lightCutoff = 10000;
  * 0.5  = 2 peaks per second.
  * 0.25 = 4 peaks per second.
  */
-const _noteFrequency = 0.25;
-const _percentNotesToKeep = 0.85;
+nums._noteFrequency = 0.25;
+nums._percentNotesToKeep = 0.85;
 
 // Note settings
-const _minMillisecondBetweenPeaks = 175; // No two notes may be closer than this.
+nums._minMillisecondBetweenPeaks = 175; // No two notes may be closer than this.
 
 // Camera settings
 const _useOrbitControls = false; // Orbit helper
@@ -157,43 +161,107 @@ const _defaultCameraRotation = Object.freeze({
 });
 
 // Waveform settings
-const _useWaveform = true;
-const _waveformDataPointsPerFrame = 1;
-const _waveformSpeed = 1.25;
+bools._useWaveform = true;
+nums._waveformDataPointsPerFrame = 1;
+nums._waveformSpeed = 2;
 
 // Wobble settings
-let _useWobble        = true && !_useOrbitControls; // Wobble messes with orbit
-let _wobbleRate       = 1;
-let _wobbleWeight     = 1;
+bools._useWobble   = true && !_useOrbitControls; // Wobble messes with orbit
+nums._wobbleRate   = 1;
+nums._wobbleWeight = 1;
 let _globalWobbleSync = 0;
 
 // Shadow setttings
-let   _useShadows = false;
+bools._useShadows = false;
 const _shadowMapSize = 512;
 const _shadowReceivers = {};
 
 // Fog settings
-let _useFog   = true;
+const _useFog = true;
 const _defaultFogNear =  800;
 const _defaultFogFar  = 2750;
 let _fogNear  = 1;
 let _fogFar   = 0;
 
 
-document.body.style.backgroundColor = `#${toHexString(_backgroundColor)}`;
+function genColorChanger(label, key) {
+  const input = genEl("input", null, null, {
+    value: `#${toHexString(colors[key])}`,
+    type: "color",
+  });
+  input.onchange = (e) => {
+    if (key === "_backgroundColor") {
+      document.body.style.backgroundColor = e.target.value;
+    }
+    colors[key] = parseInt(e.target.value.substr(1), 16);
+  };
+
+  return genEl("label", "color-setting-label")
+    .withChildren([
+      genEl("div", null, label),
+      input,
+    ]);
+}
+
+function genBoolChanger(label, key) {
+  const input = genEl("input", null, null, { type: "checkbox", checked: bools[key] });
+  input.onchange = (e) => {
+    bools[key] = e.target.checked;
+    console.log(e.target.checked);
+  };
+
+  return genEl("label")
+    .withChildren([
+      genEl("div", null, label),
+      input,
+    ]);
+}
+
+function genNumChanger(label, key) {
+  const input = genEl("input", null, null, { type: "number", value: nums[key] });
+  input.onchange = e => nums[key] = Number(e.target.value);
+
+  return genEl("label")
+    .withChildren([
+      genEl("div", null, label),
+      input,
+    ]);
+}
+
+function genSettingsNode() {
+  return genEl("div", "settings-container")
+    .withChildren([
+      genColorChanger("Fog", "_fogColor"),
+      genColorChanger("Background", "_backgroundColor"),
+      genColorChanger("Board", "_boardColor"),
+      genColorChanger("Arrow", "_arrowColor"),
+      genColorChanger("Hit text", "_hitTextColor"),
+      genColorChanger("Miss text", "_missTextColor"),
+      genColorChanger("Waveform", "_waveformColor"),
+      genColorChanger("Right light", "_rightLightColor"),
+      genColorChanger("Left light", "_leftLightColor"),
+      genColorChanger("Text light", "_textLightColor"),
+      genBoolChanger("Shadows", "_useShadows"),
+      genBoolChanger("Use wobble", "_useWobble"),
+      genBoolChanger("Use waveform", "_useWaveform"),
+      genNumChanger("Waveform speed", "_waveformSpeed"),
+    ]);
+}
+
+document.body.style.backgroundColor = `#${toHexString(colors._backgroundColor)}`;
 
 const calcWobble = (axis, syncOff = 0, forceRate) => {
-  const rate = forceRate || _wobbleRate;
+  const rate = forceRate || nums._wobbleRate;
   return _defaultCameraRotation[axis] +
     ((Math.sin((totalCycles / (10 / rate.toFixed(2))) +
-      (Math.PI * (syncOff + _globalWobbleSync))) / 150) * _wobbleWeight /* * volume * 0.1) */);
+      (Math.PI * (syncOff + _globalWobbleSync))) / 150) * nums._wobbleWeight /* * volume * 0.1) */);
 };
 
 function setWobbleRate(newRate) {
   if (typeof newRate !== "number") {
     throw new Error("Expected wobble rate to be a number.");
   }
-  const initialRate = _wobbleRate;
+  const initialRate = nums._wobbleRate;
   addToExecutionQueue(
     Math.max((Math.abs(newRate - initialRate) * 60), 1),
     (perc) => {
@@ -201,7 +269,7 @@ function setWobbleRate(newRate) {
       console.log(_globalWobbleSync.toFixed(2));
     },
     () => {
-      _wobbleRate = newRate;
+      nums._wobbleRate = newRate;
     });
 }
 
@@ -209,14 +277,14 @@ function setWobbleWeight(newWeight) {
   if (typeof newWeight !== "number") {
     throw new Error("Expected wobble weight to be a number.");
   }
-  const initialWeight = _wobbleWeight;
+  const initialWeight = nums._wobbleWeight;
   addToExecutionQueue(100, (percentage) => {
-    _wobbleWeight = getValueInbetween(initialWeight, newWeight, percentage);
+    nums._wobbleWeight = getValueInbetween(initialWeight, newWeight, percentage);
   });
 }
 
 function toggleWobble() {
-  _useWobble = !_useWobble;
+  bools._useWobble = !bools._useWobble;
 }
 
 // Demonstration purposes
@@ -225,8 +293,8 @@ window.setWobbleRate    = setWobbleRate;
 window.toggleWobble     = toggleWobble;
 
 function toggleShadows() {
-  _useShadows = !_useShadows;
-  renderer.shadowMap.enabled = _useShadows;
+  bools._useShadows = !bools._useShadows;
+  renderer.shadowMap.enabled = bools._useShadows;
 
   const keys = Object.keys(_shadowReceivers);
   for (let i = 0; i < keys.length; i += 1) {
@@ -237,6 +305,7 @@ function toggleShadows() {
 // Demonstration purposes
 window.toggleShadows = toggleShadows;
 
+/*
 function toggleFog() {
   _useFog = !_useFog;
   if (_useFog) {
@@ -246,11 +315,12 @@ function toggleFog() {
     /**
      * It's impossible to remove fog if it has been added to a scene
      * so we just make it effectively invisible.
-     */
+     /
     scene.fog.near = 0.1;
     scene.fog.far = 0;
   }
 }
+*/
 
 
 function setFogNear(n) {
@@ -312,7 +382,7 @@ function fadeFogTo(near, far, color, numFrames, callback) {
 }
 
 // Demonstration purposes
-window.toggleFog  = toggleFog;
+// window.toggleFog  = toggleFog;
 window.setFogFar  = setFogFar;
 window.setFogNear = setFogNear;
 
@@ -443,6 +513,9 @@ function genNoteMesh(index) { // Index being a note index from 0-3.
   return mesh;
 }
 
+let hitNoteCount = 0;
+let missedNoteCount = 0;
+
 /**
  * hittableNotes acts as a queue, first in first out. This allows
  * us to efficiently check whether a note was hit or not since the
@@ -512,6 +585,7 @@ function startNote(noteArr) {
 
       if (this.isHittable() && perc > (85 - visualOffsetPerc)) {
         this.setUnhittable();
+        missedNoteCount += 1;
       }
     },
     setUnhittable() {
@@ -546,8 +620,6 @@ function startNote(noteArr) {
       if (this.notes[directionIndex]) {
         this.notes[directionIndex] = 0;
       } else {
-        console.log("WRONG NOTE");
-
         // Creating the miss text
         const text = texts.miss.clone();
         text.position.y = 0;
@@ -575,6 +647,7 @@ function startNote(noteArr) {
         this.setUnhittable();
         this.isHit = true;
         addScore(50);
+        hitNoteCount += 1;
         this.group.position.y += 100;
       }
     },
@@ -588,13 +661,13 @@ function genWaveformFrame(frameVolumeArr, frameOffset = 0) {
   const group = new THREE.Group(); // The note mesh container
 
   const barMaterial = new THREE.MeshPhongMaterial({
-    color: _waveformColor,
+    color: colors._waveformColor,
     specular: 0x666666,
     shininess: 15,
   });
 
-  const waveformRange = range * _waveformSpeed;
-  const waveformStart = startPoint * _waveformSpeed;
+  const waveformRange = range * nums._waveformSpeed;
+  const waveformStart = startPoint * nums._waveformSpeed;
 
   const frameWidthY = waveformRange / 60;
   const yPeak = frameWidthY / frameVolumeArr.length; // Width of each datapoint
@@ -713,24 +786,44 @@ function main() {
   scene = new THREE.Scene();
   if (_useFog) {
     // We will fade into the fog color on load.
-    scene.fog = new THREE.Fog(_backgroundColor, _fogNear, _fogFar);
+    scene.fog = new THREE.Fog(colors._backgroundColor, _fogNear, _fogFar);
   }
   if (_useBackground) {
-    scene.background = new THREE.Color(_backgroundColor);
+    scene.background = new THREE.Color(colors._backgroundColor);
   }
 
-  fadeFogTo(_defaultFogNear, _defaultFogFar, _fogColor, 181, () => {
+  fadeFogTo(_defaultFogNear, _defaultFogFar, colors._fogColor, 181, () => {
     document.getElementById("audio").play();
 
-    setTimeout(() => fadeFogTo(1, 0, _backgroundColor, 181, () => {
+    setTimeout(() => fadeFogTo(1, 0, colors._backgroundColor, 181, () => {
       setWobbleWeight(0);
+
+      const totalNoteCount = hitNoteCount + missedNoteCount;
+      let hitPercent = ((hitNoteCount / totalNoteCount) * 100).toString();
+
+      if (hitPercent.length > 5) {
+        hitPercent = hitPercent.substr(0, 5);
+      }
+
+      let message;
+
+      if (Number(hitPercent) > 80) {
+        message = "Great job!";
+      } else if (Number(hitPercent) > 60) {
+        message = "Pretty good!";
+      } else if (Number(hitPercent) > 40) {
+        message = "Not too bad.";
+      } else {
+        message = "Please stop.";
+      }
 
       const form = genEl("form")
         .withChildren([
-          genEl("h1", null, "Spotify DDR"),
-          genEl("p", null, "Search for any song from Spotify and start playing!"),
+          genEl("h2", null, `You hit ${hitPercent}% of the notes! ${message}`),
+          genEl("p", null, "How about playing again?"),
           genEl("input", null, null, { type: "text", id: "song-input" }),
           genEl("button", null, "Find song", { type: "submit" }),
+          genSettingsNode(),
         ]);
       form.onsubmit = (e) => {
         e.preventDefault();
@@ -743,10 +836,10 @@ function main() {
           genEl("p", null, null, { id: "loader-status" }),
         ]);
 
-        getSong(song)
+        getSong(song) // eslint-disable-line no-use-before-define
           .then(() => {
             setWobbleWeight(1);
-            onLoad();
+            onLoad(); // eslint-disable-line no-use-before-define
           });
       };
 
@@ -757,43 +850,6 @@ function main() {
       uiContainer.withChildren(form);
     }), 1000 * 30);
   });
-
-    /*
-    setTimeout(() => {
-      setWobbleWeight(0);
-
-      const form = genEl("form")
-        .withChildren([
-          genEl("h1", null, "Spotify DDR"),
-          genEl("p", null, "Search for any song from Spotify and start playing!"),
-          genEl("input", null, null, { type: "text", id: "song-input" }),
-          genEl("button", null, "Find song", { type: "submit" }),
-        ]);
-      form.onsubmit = (e) => {
-        e.preventDefault();
-        const song = document.getElementById("song-input").value;
-
-        uiContainer.classList.add("loading");
-        uiContainer.innerHTML = "";
-        uiContainer.withChildren([
-          genEl("div", "loader"),
-          genEl("p", null, null, { id: "loader-status" }),
-        ]);
-
-        getSong(song)
-          .then(() => {
-            setWobbleWeight(1);
-            onLoad();
-          });
-      };
-
-      playing = false;
-      const canvas = document.body.lastChild;
-      canvas.remove();
-      uiContainer.classList.add("active");
-      uiContainer.withChildren(form);
-    }, 1000 * 32);
-  */
 
   const totalTime = 22050 * 60;
   const percent = totalTime / 100;
@@ -810,7 +866,7 @@ function main() {
     30,
     2400);
   const boardMaterial = new THREE.MeshPhongMaterial({
-    color: _boardColor,
+    color: colors._boardColor,
     specular: 0x666666,
     shininess: 15,
   });
@@ -849,19 +905,19 @@ function main() {
 
   const lights = [
     {
-      color:      _rightLightColor,
+      color:      colors._rightLightColor,
       intensity:  _rightLightIntensity,
       cutoff:     _lightCutoff,
       pos: [500, 3500, 0],
     },
     {
-      color:      _leftLightColor,
+      color:      colors._leftLightColor,
       intensity:  _leftLightIntensity,
       cutoff:     _lightCutoff,
       pos: [-500, 3500, 0],
     },
     {
-      color:      _textLightColor,
+      color:      colors._textLightColor,
       intensity:  _textLightIntensity,
       cutoff:     _lightCutoff,
       pos: [-800, -500, 1000],
@@ -879,10 +935,10 @@ function main() {
   const ambLight = new THREE.AmbientLight(0x404040);
   scene.add(ambLight);
 
-  renderer = new THREE.WebGLRenderer({ antialias: _antialias });
+  renderer = new THREE.WebGLRenderer({ antialias: bools._antialias });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = _useShadows;
+  renderer.shadowMap.enabled = bools._useShadows;
   // renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   console.log({ renderer });
 
@@ -899,8 +955,8 @@ function hasPerfError() {
    *
    * If any of these checks return a value, kill the application.
    */
-  if (activeWaveformFrames.length > 300) {
-    return "Active wave forms exceeded 300.";
+  if (activeWaveformFrames.length > 350) {
+    return "Active wave forms exceeded 350.";
   }
   if (activeNotes.length > 60) {
     return "Active notes exceeded 60";
@@ -940,7 +996,7 @@ function render() {
 
   const waveformOffset = 60;
   for (let i = 0; i < framesElapsed; i += 1) {
-    if (_useWaveform && waveformData[totalCycles - waveformOffset - i]) {
+    if (bools._useWaveform && waveformData[totalCycles - waveformOffset - i]) {
       activeWaveformFrames.push(
         genWaveformFrame(waveformData[totalCycles - waveformOffset - i], i));
     }
@@ -955,7 +1011,7 @@ function render() {
     }
   }
 
-  if (_useWaveform) {
+  if (bools._useWaveform) {
     for (let i = 0; i < activeWaveformFrames.length; i += 1) {
       const bar = activeWaveformFrames[i];
       if (bar.getPercentComplete() > 130) {
@@ -972,7 +1028,7 @@ function render() {
     controls.update();
   }
 
-  if (_useWobble) {
+  if (bools._useWobble) {
     camera.rotation.x = calcWobble("x", 0);
     camera.rotation.y = calcWobble("y", 0.5);
   }
@@ -983,8 +1039,8 @@ function render() {
 function onLoad() {
   uiContainer.classList.remove("active");
 
-  if (_useWaveform) {
-    const hzPerFrame = ((audioData.length - 1) / 30 / 60 / _waveformDataPointsPerFrame);
+  if (bools._useWaveform) {
+    const hzPerFrame = ((audioData.length - 1) / 30 / 60 / nums._waveformDataPointsPerFrame);
 
     /**
      * Creates a shorter version of the raw audio data that has
@@ -1001,9 +1057,9 @@ function onLoad() {
     }
 
     waveformData = [];
-    for (let i = 0; i < data.length; i += _waveformDataPointsPerFrame) {
+    for (let i = 0; i < data.length; i += nums._waveformDataPointsPerFrame) {
       const frame = [];
-      for (let j = 0; j < _waveformDataPointsPerFrame; j += 1) {
+      for (let j = 0; j < nums._waveformDataPointsPerFrame; j += 1) {
         frame.push(data[Math.floor(i) + j]);
       }
       waveformData.push(frame);
@@ -1060,7 +1116,7 @@ function onLoad() {
 }
 
 const arrowMaterial = new THREE.MeshPhongMaterial({
-  color: _arrowColor,
+  color: colors._arrowColor,
   specular: 0x444444,
   shininess: 10,
 });
@@ -1137,7 +1193,7 @@ const createTextMeshes = () => new Promise((resolve) => {
       name: "miss",
       text: "Miss!",
       material: new THREE.MeshStandardMaterial({
-        color: _missTextColor,
+        color: colors._missTextColor,
         wireframe: false,
         metalness: 0.7,
       }),
@@ -1151,7 +1207,7 @@ const createTextMeshes = () => new Promise((resolve) => {
       name: "hit",
       text: "Great!",
       material: new THREE.MeshStandardMaterial({
-        color: _hitTextColor,
+        color: colors._hitTextColor,
         metalness: 0.8,
       }),
       opts: {
@@ -1179,7 +1235,7 @@ const createTextMeshes = () => new Promise((resolve) => {
 });
 
 function getPeaks(data) {
-  const partSize = khzSecond * _noteFrequency;
+  const partSize = khzSecond * nums._noteFrequency;
   const numParts = data[0].length / partSize;
 
   peaks = [];
@@ -1212,7 +1268,7 @@ function getPeaks(data) {
     peaks.push(peak);
   }
 
-  const minMs = _minMillisecondBetweenPeaks * ((khzSecond) / 1000);
+  const minMs = nums._minMillisecondBetweenPeaks * ((khzSecond) / 1000);
 
   /**
    * Removing peaks that are too close to a certain millisecond value.
@@ -1232,7 +1288,7 @@ function getPeaks(data) {
    */
   peaks = peaks
     .sort((a, b) => (b.vol - a.vol)) // Sort by volume
-    .splice(0, Math.round(peaks.length * _percentNotesToKeep)) // Only keep a certain percentile
+    .splice(0, Math.round(peaks.length * nums._percentNotesToKeep)) // Only keep a certain percentile
     .sort((a, b) => (a.pos - b.pos)); // Then sort back to positions
 }
 
@@ -1343,7 +1399,9 @@ if (accessToken) {
       genEl("p", null, "Search for any song from Spotify and start playing!"),
       genEl("input", null, null, { type: "text", id: "song-input" }),
       genEl("button", null, "Find song", { type: "submit" }),
+      genSettingsNode(),
     ]);
+
   form.onsubmit = (e) => {
     e.preventDefault();
     const song = document.getElementById("song-input").value;

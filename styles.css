@@ -22,6 +22,12 @@ h1 {
   margin-bottom: 1rem;
 }
 
+h2 {
+  font-size: 1.75rem;
+  font-weight: bolder;
+  margin-bottom: 1rem;
+}
+
 p {
   margin-bottom: 1rem;
 }
@@ -119,4 +125,18 @@ p {
   background: rgba(0,0,0,.3);
   width: 40px;
   height: 40px;
+}
+
+.settings-container {
+  margin-top: 20px;
+  overflow-y: scroll;
+  max-height: 300px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.color-setting-label {
+  width: 25%;
+  margin-bottom: 10px;
 }

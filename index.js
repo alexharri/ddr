@@ -1540,7 +1540,7 @@ if (accessToken) {
   const button = genEl("button", null, "Get access token");
 
   const redirectUri = process.env.NODE_ENV === "production"
-    ? "https://ddr.xlex.is"
+    ? "http://ddr.xlex.is"
     : "localhost:8080";
   const spotifyUrl = `https://accounts.spotify.com/en/authorize?client_id=b7e6e7cef1c74629ab74d4f89ec088c0&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=&state=`
   button.onclick = () => window.location.href = spotifyUrl; // eslint-disable-line no-return-assign

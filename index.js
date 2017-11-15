@@ -1538,7 +1538,12 @@ if (accessToken) {
   setTimeout(() => uiContainer.classList.add("active"));
 
   const button = genEl("button", null, "Get access token");
-  button.onclick = () => window.location.href = "https://accounts.spotify.com/en/authorize?client_id=b7e6e7cef1c74629ab74d4f89ec088c0&response_type=token&redirect_uri=http:%2F%2Flocalhost:8080&scope=&state="; // eslint-disable-line no-return-assign
+
+  const redirectUri = process.env.NODE_ENV === "production"
+    ? "https://ddr.xlex.is"
+    : "localhost:8080";
+  const spotifyUrl = `https://accounts.spotify.com/en/authorize?client_id=b7e6e7cef1c74629ab74d4f89ec088c0&response_type=token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=&state=`
+  button.onclick = () => window.location.href = spotifyUrl; // eslint-disable-line no-return-assign
 
   uiContainer.withChildren([
     genEl("h1", null, "Spotify DDR"),
